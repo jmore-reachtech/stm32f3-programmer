@@ -587,7 +587,7 @@ static void start(void)
 	
 	//stm_write_mem(0x08000000);
 	
-	stm_go(0x08000000);
+	//stm_go(0x08000000);
 	
 	//stm_read_mem(0x08000000, 256);
 } 
