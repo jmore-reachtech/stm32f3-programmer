@@ -432,7 +432,7 @@ static int stm_write_mem(uint32_t address)
 	buf[3] = address & 0xFF;
 	buf[4] = buf[0] ^ buf[1] ^ buf[2] ^ buf[3];
 	
-	printf("%s: writing 0x%02X to stm \n",__func__, cmd[0]);
+	printf("%s: writing cmd 0x%02X to stm \n",__func__, cmd[0]);
 	r = write(fd_tty, &cmd, 2);
 	if(r < 1) {
 		printf("%s: write failed! \n", __func__);
@@ -455,16 +455,14 @@ static int stm_write_mem(uint32_t address)
 	}
 
 	cmd[0] = 0xFF;
-	printf("%s: writing 0x%02X to stm \n",__func__, cmd[0]);
+	printf("%s: writing len 0x%02X to stm \n",__func__, cmd[0]);
 	r = write(fd_tty, &cmd, 1);
 	if(r < 1) {
 		printf("%s: write failed! \n", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
-		printf("%s: No ACK! \n", __func__);
-		return 1;
-	}
+	
+	cs = cmd[0];
 	
 	memcpy(buf,data, 0xFF);
 	for(i = 0; i < 256; i++) {
@@ -472,17 +470,22 @@ static int stm_write_mem(uint32_t address)
 	}
 	
 	printf("%s: writing data to stm \n",__func__);
-	r = write(fd_tty, &buf, 256);
+	r = write(fd_tty, &buf, 0xFf);
 	if(r < 1) {
 		printf("%s: write failed! \n", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
-		printf("%s: No ACK! \n", __func__);
+	
+	cmd[0] = 0x0;
+	printf("%s: writing extra byte to stm \n",__func__);
+	r = write(fd_tty, &cmd, 1);
+	if(r < 1) {
+		printf("%s: write failed! \n", __func__);
 		return 1;
 	}
 	
-	printf("%s: writing cs to stm \n",__func__);
+	//cs = 0x5;
+	printf("%s: writing cs 0x%02X to stm \n",__func__, cs);
 	r = write(fd_tty, &cs, 1);
 	if(r < 1) {
 		printf("%s: write failed! \n", __func__);
@@ -533,6 +536,45 @@ static int stm_get_id(void)
 	return 0;
 }
 
+static int stm_go(uint32_t address)
+{
+	uint8_t cmd[2];
+	uint8_t buf[5];
+	ssize_t r;
+	
+	cmd[0] = STM_CMD_GO;
+	cmd[1] = STM_CMD_GO ^ 0xFF;
+	
+	buf[0] = address >> 24;
+	buf[1] = (address >> 16) & 0xFF;
+	buf[2] = (address >> 8) & 0xFF;
+	buf[3] = address & 0xFF;
+	buf[4] = buf[0] ^ buf[1] ^ buf[2] ^ buf[3];
+	
+	printf("%s: writing 0x%02X to stm \n",__func__, cmd[0]);
+	r = write(fd_tty, &cmd, 2);
+	if(r < 1) {
+		printf("%s: write failed! \n", __func__);
+		return 1;
+	}
+	if( stm_get_ack() != STM32_ERR_OK) {
+		printf("%s: No ACK! \n", __func__);
+		return 1;
+	}
+
+	printf("%s: writing address 0x%08X to stm \n",__func__, address);
+	r = write(fd_tty, &buf, 5);
+	if(r < 1) {
+		printf("%s: write failed! \n", __func__);
+		return 1;
+	}
+	
+	printf("%s: sleeping \n",__func__);
+	sleep(10);
+
+	return 0;
+}
+
 static void start(void)
 {	
 	stm_init_seq();
@@ -543,7 +585,9 @@ static void start(void)
 	
 	//stm_erase_mem();
 	
-	stm_write_mem(0x08000000);
+	//stm_write_mem(0x08000000);
+	
+	stm_go(0x08000000);
 	
 	//stm_read_mem(0x08000000, 256);
 } 
