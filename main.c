@@ -346,7 +346,7 @@ static int stm_get_cmds(void)
 static int stm_erase_mem(void)
 {
 	uint8_t cmd[2];
-	uint8_t buf[5];
+	uint8_t buf[3];
 	ssize_t r;
 	
 	cmd[0] = STM_CMD_ERASE_MEM_EXT;
@@ -355,7 +355,6 @@ static int stm_erase_mem(void)
 	buf[0] = 0xFF;
 	buf[1] = 0xFF;
 	buf[2] = 0x00;
-	buf[3] = 0x00;
 	
 	printf("%s: writing 0x%02X to stm \n",__func__, cmd[0]);
 	r = write(fd_tty, &cmd, 2);
@@ -369,7 +368,7 @@ static int stm_erase_mem(void)
 	}
 	
 	printf("%s: writing 0x%02X%02X to stm \n",__func__, buf[0], buf[1]);
-	r = write(fd_tty, &buf, 4);
+	r = write(fd_tty, &buf, 3);
 	if(r < 1) {
 		printf("%s: write failed! \n", __func__);
 		return 1;
@@ -584,8 +583,10 @@ static void start(void)
 
 	//stm_get_cmds();
 
-	//stm_erase_mem();
+	stm_erase_mem();
 
+	sleep(2);
+	
 	read_file("main.bin");
 
 	//stm_write_mem(0x08000000);
