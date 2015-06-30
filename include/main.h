@@ -29,6 +29,8 @@ typedef enum {LOW = 0, HIGH} pin_state;
 #define STM_CMD_READ_PROTECT	0x82
 #define STM_CMD_READ_UNPROTECT	0x92
 
+#define STM_FLASH_BASE			0x08000000
+#define MAX_RW_SIZE				0x100
 
 typedef enum {
 	STM32_ERR_OK = 0,

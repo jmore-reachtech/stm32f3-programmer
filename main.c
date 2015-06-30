@@ -17,6 +17,27 @@
 static int fd_gpio = 0;
 static int fd_tty = 0;
 
+static void tio_init(struct termios *t);
+static int gpio_init(void);
+static void gpio_deinit(void);
+static void toggle_boot(pin_state p);
+static void toggle_reset(pin_state p);
+static void tty_init(void);
+static void tty_deinit(void);
+static void sig_handler(int sig, siginfo_t *siginfo, void *context);
+static void read_file(char *path);
+static void write_file(uint8_t *data, int size);
+static int serial_read(void *buf, size_t nbyte);
+static stm32_err_t stm_get_ack(void);
+static int stm_init_seq(void);
+static int stm_get_cmds(void);
+static int stm_erase_mem(void);
+static int stm_read_mem(uint32_t address, unsigned int len);
+static int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len);
+static int stm_get_id(void);
+static int stm_go(uint32_t address);
+static void start(void);
+
 static void tio_init(struct termios *t)
 {
 	cfmakeraw(t);
@@ -176,32 +197,39 @@ static void sig_handler(int sig, siginfo_t *siginfo, void *context)
 	tty_deinit();
 }
 
-static uint8_t *read_file(char *path)
+static void read_file(char *path)
 {
 	FILE *fp;
 	ssize_t r;
 	long size;
-	uint8_t *tmp;
-	
+	uint8_t tmp[MAX_RW_SIZE];
+	uint32_t addr = STM_FLASH_BASE;
+	unsigned int i;
+
 	fp = fopen("main.bin", "rb");
-	
+
 	fseek (fp , 0 , SEEK_END);
 	size = ftell (fp);
 	rewind (fp);
-	
+
 	printf("%s: file size is %ld \n", __func__, size);
-	
-	tmp = (uint8_t*) malloc(sizeof(uint8_t) * size);
-	printf("tmp addr 0x%X \n", tmp);
-	
-	r = fread (tmp,1,size,fp);
-	if(r != size) {
-		printf("%s: read size mismatch! Expected %ld read %ld \n", __func__, size, (long)r);
+
+	r = fread (tmp,1,MAX_RW_SIZE,fp);
+	while (r > 0) {
+		if(r < MAX_RW_SIZE) {
+			printf("\n%s: padding buffer, read %d \n", __func__, r);
+			for(i = r; i < MAX_RW_SIZE; i++) {
+				tmp[i] = 0xFF;
+			}
+		}
+		printf("\n%s: writing %d bytes to flash \n", __func__, MAX_RW_SIZE);
+		stm_write_mem(addr,tmp,MAX_RW_SIZE);
+		addr += r;
+
+		r = fread (tmp,1,MAX_RW_SIZE,fp);
 	}
-	
+
 	fclose (fp);
-	
-	return tmp;
 }
 
 static void write_file(uint8_t *data, int size)
@@ -412,26 +440,23 @@ static int stm_read_mem(uint32_t address, unsigned int len)
 	return 0;
 }
 
-static int stm_write_mem(uint32_t address)
+static int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len)
 {
 	uint8_t cs;
-	uint8_t *data;
 	uint8_t cmd[2];
-	uint8_t buf[256];
-	int i;
+	uint8_t buf[256 + 2];
 	ssize_t r;
-	
-	data = read_file(NULL);
+	unsigned int i, aligned_len;
 
 	cmd[0] = STM_CMD_WRITE_MEM;
 	cmd[1] = STM_CMD_WRITE_MEM ^ 0xFF;
-	
+
 	buf[0] = address >> 24;
 	buf[1] = (address >> 16) & 0xFF;
 	buf[2] = (address >> 8) & 0xFF;
 	buf[3] = address & 0xFF;
 	buf[4] = buf[0] ^ buf[1] ^ buf[2] ^ buf[3];
-	
+
 	printf("%s: writing cmd 0x%02X to stm \n",__func__, cmd[0]);
 	r = write(fd_tty, &cmd, 2);
 	if(r < 1) {
@@ -442,7 +467,7 @@ static int stm_write_mem(uint32_t address)
 		printf("%s: No ACK! \n", __func__);
 		return 1;
 	}
-	
+
 	printf("%s: writing address 0x%08X to stm \n",__func__, address);
 	r = write(fd_tty, &buf, 5);
 	if(r < 1) {
@@ -453,54 +478,30 @@ static int stm_write_mem(uint32_t address)
 		printf("%s: No ACK! \n", __func__);
 		return 1;
 	}
-
-	cmd[0] = 0xFF;
-	printf("%s: writing len 0x%02X to stm \n",__func__, cmd[0]);
-	r = write(fd_tty, &cmd, 1);
-	if(r < 1) {
-		printf("%s: write failed! \n", __func__);
-		return 1;
+	
+	aligned_len = (len + 3) & ~3;
+	printf("%s: aligned len %d \n", __func__, aligned_len);
+	
+	buf[0] = len -1;
+	cs = buf[0];
+	for(i = 0; i < len; i++) {
+		cs ^= data[i];
+		buf[i + 1] = data[i];
+		//printf("%s: cs = 0x%02X; data = 0x%02X \n", __func__, cs, data[i]);
 	}
-	
-	cs = cmd[0];
-	
-	memcpy(buf,data, 0xFF);
-	for(i = 0; i < 256; i++) {
-		cs ^= buf[i];
-	}
-	
+	buf[len + 1] = cs;
 	printf("%s: writing data to stm \n",__func__);
-	r = write(fd_tty, &buf, 0xFf);
+	r = write(fd_tty, &buf, len + 2);
 	if(r < 1) {
 		printf("%s: write failed! \n", __func__);
 		return 1;
 	}
-	
-	cmd[0] = 0x0;
-	printf("%s: writing extra byte to stm \n",__func__);
-	r = write(fd_tty, &cmd, 1);
-	if(r < 1) {
-		printf("%s: write failed! \n", __func__);
-		return 1;
-	}
-	
-	//cs = 0x5;
-	printf("%s: writing cs 0x%02X to stm \n",__func__, cs);
-	r = write(fd_tty, &cs, 1);
-	if(r < 1) {
-		printf("%s: write failed! \n", __func__);
-		return 1;
-	}
+
 	if( stm_get_ack() != STM32_ERR_OK) {
 		printf("%s: No ACK! \n", __func__);
 		return 1;
 	}
-	
-	
-	if(data) {
-		free(data);
-	}
-	
+
 	return 0;
 }
 
@@ -578,19 +579,21 @@ static int stm_go(uint32_t address)
 static void start(void)
 {	
 	stm_init_seq();
-	
+
 	stm_get_id();
-	
+
 	//stm_get_cmds();
-	
+
 	//stm_erase_mem();
-	
+
+	read_file("main.bin");
+
 	//stm_write_mem(0x08000000);
-	
+
 	//stm_go(0x08000000);
-	
+
 	//stm_read_mem(0x08000000, 256);
-} 
+}
 
 int main(int argc, char **argv)
 {
