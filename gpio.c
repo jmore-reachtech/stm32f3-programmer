@@ -29,20 +29,24 @@ int gpio_init(void)
 	rv = i2c_smbus_write_byte_data(fd, I2C_CTRL_REG, 0xF3);
 	if(rv < 0) {
 		printf("smbus write failed! \n");
+		return -1;
 	}
 	rv = i2c_smbus_write_byte_data(fd, I2C_OUT_REG, 0x08);
 	if(rv < 0) {
 		printf("smbus write failed! \n");
+		return -1;
 	}
 	
 	rv = i2c_smbus_read_byte_data(fd, I2C_CTRL_REG);
 	if(rv < 0) {
 		printf("smbus read failed! \n");
+		return -1;
 	}
 	
 	rv = i2c_smbus_read_byte_data(fd, I2C_OUT_REG);
 	if(rv < 0) {
 		printf("smbus read failed! \n");
+		return -1;
 	}
 	
 	return 0;

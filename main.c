@@ -5,29 +5,55 @@
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
+#include <termios.h>
 
 #include "main.h"
 #include "serial.h"
 #include "gpio.h"
 #include "stm32.h"
 
-static void read_file(char *path);
-static void start(void);
+static void reset_micro(pin_state s);
+static int update_firmware(char *path);
+static int start(void);
+static void read_action(void);
+static void write_action(void);
 
-static void sig_handler(int sig, siginfo_t *siginfo, void *context)
+struct {
+	work_action task;
+	work_state state;
+	uint8_t reset;
+	char *filename;
+	serial_port_options sport;
+} work = {
+	.task = FLASH_NONE,
+	.state = IDLE,
+	.reset = 0x1,
+	.filename = "main.bin",
+	.sport = {
+		.device = TTY_DEV,
+		.baud_rate = B57600,
+	},
+};
+
+static void reset_micro(pin_state s)
 {
-	gpio_toggle_boot(LOW);
+	gpio_toggle_boot(s);
 	sleep(1);
 	gpio_toggle_reset(LOW);
 	sleep(1);
 	gpio_toggle_reset(HIGH);
 	sleep(1);
+}
+
+static void sig_handler(int sig, siginfo_t *siginfo, void *context)
+{
+	reset_micro(LOW);
 
 	gpio_deinit();
 	serial_deinit();
 }
 
-static void read_file(char *path)
+static int update_firmware(char *path)
 {
 	FILE *fp;
 	ssize_t r;
@@ -36,7 +62,11 @@ static void read_file(char *path)
 	uint32_t addr = STM_FLASH_BASE;
 	unsigned int i;
 
-	fp = fopen("main.bin", "rb");
+	fp = fopen(path, "rb");
+	if(fp == NULL) {
+		fprintf(stderr, "File '%s' not found!", path);
+		return 1;
+	}
 
 	fseek (fp , 0 , SEEK_END);
 	size = ftell (fp);
@@ -60,65 +90,155 @@ static void read_file(char *path)
 	}
 
 	fclose (fp);
+	
+	return 0;
 }
 
-static void start(void)
-{	
-	stm_init_seq();
+static void display_help(char *prog_name)
+{
+	fprintf(stdout, "Usage: %s [options]\n", prog_name);
+	fprintf(stdout, "  Program external micro\n");
+    fprintf(stdout, "\n");
+    fprintf(stdout, "Options:\n");
+    fprintf(stdout, "  -b baud_rate          Set baud rate (default:%s)\n", baud_key_to_str(work.sport.baud_rate));
+    fprintf(stdout, "  -t tty_device         Set serial dev (default:%s)\n", work.sport.device);
+    fprintf(stdout, "  -w filename           Write flash from file (default:%s)\n", work.filename);
+    fprintf(stdout, "  -r filename           Read flash to file (default:%s)\n", work.filename);
+    fprintf(stdout, "  -s                    Skip micro reset (default:%s)\n", work.reset ? "No" : "Yes");
+    fprintf(stdout, "  -h                    Display this help and exit\n");
+    fprintf(stdout, "\n");
+}
 
-	stm_get_id();
-
-	//stm_get_cmds();
-
-	stm_erase_mem();
-
-	sleep(2);
+static int parse_options(int argc, char *argv[]) 
+{
+	int c;
 	
-	read_file("main.bin");
+	while ((c = getopt(argc, argv, "hw:r:b:t:s")) != -1) {
+		switch(c) {
+			case 'h':
+				if(work.task != FLASH_NONE) {
+					fprintf(stderr,"Multiple actions not supported! \n");
+					return 1;
+				}
+				work.task = FLASH_HELP;
+				;break;
+			case 'w':
+				if(work.task != FLASH_NONE) {
+					fprintf(stderr,"Multiple actions not supported! \n");
+					return 1;
+				}
+				work.filename = optarg;
+				work.task = FLASH_WRITE;
+				break;
+			case 'r':
+				if(work.task != FLASH_NONE) {
+					fprintf(stderr,"Multiple actions not supported! \n");
+					return 1;
+				}
+				work.filename = optarg;
+				work.task = FLASH_READ;
+				break;
+			case 'b':
+				work.sport.baud_rate = baud_str_to_key(optarg);
+				break;
+			case 't':
+				work.sport.device = strdup(optarg);
+				break;
+			case 's':
+				work.reset = 0x0;
+				break;
+		}
+	}
+	
+	return 0;
+}
 
-	//stm_write_mem(STM_FLASH_BASE);
+static void write_action(void)
+{
+	if(work.reset) {
+		if(gpio_init() != 0) {
+			work.state = FAILED;
+			goto err;
+		}
+		reset_micro(HIGH);
+	}
+	
+	serial_init();
+	work.state = INITED;
+	if(stm_init_seq() != 0) {
+		work.state = FAILED;
+		goto deinit;
+	}
+	if(stm_erase_mem() != 0) {
+		work.state = FAILED;
+		goto deinit;
+	}
+	update_firmware(work.filename);
+	work.state = SUCCESS;
+	
+deinit:
+if(work.reset) {
+	reset_micro(LOW);
+	gpio_deinit();
+}
+serial_deinit();
 
-	//stm_go(STM_FLASH_BASE);
+err:
+	return;
+}
 
-	//stm_read_mem(STM_FLASH_BASE, 256);
+static void read_action(void)
+{
+	fprintf(stdout, "Flash read not implemented \n");
+	work.state = SUCCESS;
+}
+
+static int start(void)
+{
+	work.state = START;
+	
+	switch(work.task) {
+		case FLASH_WRITE:
+			write_action();
+			break;
+		case FLASH_READ:
+			read_action();
+			break;
+		default:
+			break;
+	}
+	
+	return work.state;
 }
 
 int main(int argc, char **argv)
 {
 	struct sigaction sig_act;
+	int ret = 1;
 
 	sig_act.sa_sigaction = sig_handler;
 	sig_act.sa_flags = SA_SIGINFO;
 	if (sigaction(SIGTERM, &sig_act, NULL) < 0) {
 		perror ("sigaction");
-		return 1;
+		goto close;
 	}
 	if (sigaction(SIGINT, &sig_act, NULL) < 0) {
 		perror ("sigaction");
-		return 1;
+		goto close;
 	}
 	
-	gpio_init();
-	serial_init();
+	if (parse_options(argc, argv) != 0) {
+		goto close;
+	}
 	
-	gpio_toggle_boot(HIGH);
-	sleep(1);
-	gpio_toggle_reset(LOW);
-	sleep(1);
-	gpio_toggle_reset(HIGH);
-	sleep(1);
-	
-	start();
+	if(work.task == FLASH_HELP || work.task == FLASH_NONE) {
+		display_help(argv[0]);
+		goto close;
+	}
 
-	gpio_toggle_boot(LOW);
-	sleep(1);
-	gpio_toggle_reset(LOW);
-	sleep(1);
-	gpio_toggle_reset(HIGH);
-	sleep(1);
-	
-	gpio_deinit();
-	serial_deinit();
-		
-	return 0;
+	ret = start();
+
+close:
+
+	return ret;
 }

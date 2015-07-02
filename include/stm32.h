@@ -18,6 +18,7 @@
 #define STM_CMD_READ_UNPROTECT	0x92
 
 #define STM_FLASH_BASE			0x08000000
+#define STM_FLASH_SIZE			0x00040000
 #define MAX_RW_SIZE				0x100
 
 typedef enum {
