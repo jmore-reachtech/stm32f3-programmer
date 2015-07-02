@@ -17,18 +17,21 @@ static int update_firmware(char *path);
 static int start(void);
 static void read_action(void);
 static void write_action(void);
+static void query_action(void);
 
 struct {
 	work_action task;
 	work_state state;
 	uint8_t reset;
 	char *filename;
+	uint32_t addr;
 	serial_port_options sport;
 } work = {
 	.task = FLASH_NONE,
 	.state = IDLE,
 	.reset = 0x1,
 	.filename = "main.bin",
+	.addr = USER_DATA_OFFSET,
 	.sport = {
 		.device = TTY_DEV,
 		.baud_rate = B57600,
@@ -105,6 +108,7 @@ static void display_help(char *prog_name)
     fprintf(stdout, "  -w filename           Write flash from file (default:%s)\n", work.filename);
     fprintf(stdout, "  -r filename           Read flash to file (default:%s)\n", work.filename);
     fprintf(stdout, "  -s                    Skip micro reset (default:%s)\n", work.reset ? "No" : "Yes");
+    fprintf(stdout, "  -q                    Query micro version(default:0x%08X)\n", work.addr);
     fprintf(stdout, "  -h                    Display this help and exit\n");
     fprintf(stdout, "\n");
 }
@@ -113,7 +117,7 @@ static int parse_options(int argc, char *argv[])
 {
 	int c;
 	
-	while ((c = getopt(argc, argv, "hw:r:b:t:s")) != -1) {
+	while ((c = getopt(argc, argv, "hw:r:b:t:sq")) != -1) {
 		switch(c) {
 			case 'h':
 				if(work.task != FLASH_NONE) {
@@ -146,6 +150,13 @@ static int parse_options(int argc, char *argv[])
 				break;
 			case 's':
 				work.reset = 0x0;
+				break;
+			case 'q':
+				if(work.task != FLASH_NONE) {
+					fprintf(stderr,"Multiple actions not supported! \n");
+					return 1;
+				}
+				work.task = FLASH_QUERY;
 				break;
 		}
 	}
@@ -187,6 +198,51 @@ err:
 	return;
 }
 
+static void query_action(void)
+{
+	uint8_t data[4] = {0};
+	uint32_t addr = 0x0;
+	
+	if(work.reset) {
+		if(gpio_init() != 0) {
+			work.state = FAILED;
+			goto err;
+		}
+		reset_micro(HIGH);
+	}
+	
+	serial_init();
+	work.state = INITED;
+	if(stm_init_seq() != 0) {
+		work.state = FAILED;
+		goto deinit;
+	}
+	if(stm_read_mem(work.addr, data, 4) != 0) {
+		work.state = FAILED;
+		goto deinit;
+	}
+
+	addr = data[3] << 24 | data[2] << 16 | data[1] << 8 | data[0] << 0;
+	if(addr == MICRO_VERSION) {
+		printf("%s: version correct 0x%08X \n", __func__, addr);
+	} else {
+		printf("%s: version mismatch extected 0x%08X, got 0x%08X \n", 
+			__func__, MICRO_VERSION, addr);
+	}
+	
+	work.state = SUCCESS;
+	
+deinit:
+if(work.reset) {
+	reset_micro(LOW);
+	gpio_deinit();
+}
+serial_deinit();
+
+err:
+	return;
+}
+
 static void read_action(void)
 {
 	fprintf(stdout, "Flash read not implemented \n");
@@ -203,6 +259,9 @@ static int start(void)
 			break;
 		case FLASH_READ:
 			read_action();
+			break;
+		case FLASH_QUERY:
+			query_action();
 			break;
 		default:
 			break;

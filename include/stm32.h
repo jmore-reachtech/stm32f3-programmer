@@ -35,7 +35,7 @@ stm32_err_t stm_get_ack(void);
 int stm_init_seq(void);
 int stm_get_cmds(void);
 int stm_erase_mem(void);
-int stm_read_mem(uint32_t address, unsigned int len);
+int stm_read_mem(uint32_t address, uint8_t *data , unsigned int len);
 int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len);
 int stm_get_id(void);
 int stm_go(uint32_t address);

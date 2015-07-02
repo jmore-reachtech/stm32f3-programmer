@@ -125,11 +125,11 @@ int stm_erase_mem(void)
 	return 0;
 }
 
-int stm_read_mem(uint32_t address, unsigned int len)
+int stm_read_mem(uint32_t address, uint8_t *data, unsigned int len )
 {
 	uint8_t cmd[2];
 	uint8_t buf[5];
-	uint8_t data[256];
+	//uint8_t data[256];
 	ssize_t r;
 	
 	cmd[0] = STM_CMD_READ_MEM;
@@ -163,8 +163,8 @@ int stm_read_mem(uint32_t address, unsigned int len)
 		return 1;
 	}
 	
-	cmd[0] = len - 1;
-	cmd[1] = (len - 1) ^ 0xFF;
+	cmd[0] = len;
+	cmd[1] = (len) ^ 0xFF;
 	printf("%s: writing len %d to stm \n",__func__, len);
 	r = serial_write(&cmd, 2);
 	if(r < 1) {
@@ -176,7 +176,7 @@ int stm_read_mem(uint32_t address, unsigned int len)
 		return 1;
 	}
 	
-	serial_read(&data,len - 1);
+	serial_read(data, len);
 
 	write_file(data, 256);
 
