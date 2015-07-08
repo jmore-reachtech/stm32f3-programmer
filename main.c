@@ -18,6 +18,7 @@ static int start(void);
 static void read_action(void);
 static void write_action(void);
 static void query_action(void);
+static void go_action(void);
 
 struct {
 	work_action task;
@@ -25,6 +26,7 @@ struct {
 	uint8_t reset;
 	char *filename;
 	uint32_t addr;
+	version_check ver_check;
 	serial_port_options sport;
 } work = {
 	.task = FLASH_NONE,
@@ -32,6 +34,7 @@ struct {
 	.reset = 0x1,
 	.filename = "main.bin",
 	.addr = USER_DATA_OFFSET,
+	.ver_check = UNCHECKED,
 	.sport = {
 		.device = TTY_DEV,
 		.baud_rate = B57600,
@@ -166,33 +169,12 @@ static int parse_options(int argc, char *argv[])
 
 static void write_action(void)
 {
-	if(work.reset) {
-		if(gpio_init() != 0) {
-			work.state = FAILED;
-			goto err;
-		}
-		reset_micro(HIGH);
-	}
-	
-	serial_init();
-	work.state = INITED;
-	if(stm_init_seq() != 0) {
-		work.state = FAILED;
-		goto deinit;
-	}
 	if(stm_erase_mem() != 0) {
 		work.state = FAILED;
-		goto deinit;
+		goto err;
 	}
 	update_firmware(work.filename);
 	work.state = SUCCESS;
-	
-deinit:
-if(work.reset) {
-	reset_micro(LOW);
-	gpio_deinit();
-}
-serial_deinit();
 
 err:
 	return;
@@ -202,46 +184,41 @@ static void query_action(void)
 {
 	uint8_t data[4] = {0};
 	uint32_t addr = 0x0;
-	
-	if(work.reset) {
-		if(gpio_init() != 0) {
-			work.state = FAILED;
-			goto err;
-		}
-		reset_micro(HIGH);
-	}
-	
-	serial_init();
-	work.state = INITED;
-	if(stm_init_seq() != 0) {
-		work.state = FAILED;
-		goto deinit;
-	}
+
 	if(stm_read_mem(work.addr, data, 4) != 0) {
 		work.state = FAILED;
-		goto deinit;
+		goto err;
 	}
 
 	addr = data[3] << 24 | data[2] << 16 | data[1] << 8 | data[0] << 0;
 	if(addr == MICRO_VERSION) {
 		printf("%s: version correct 0x%08X \n", __func__, addr);
+		work.ver_check = MATCH;
 	} else {
-		printf("%s: version mismatch extected 0x%08X, got 0x%08X \n", 
+		printf("%s: version mismatch expected 0x%08X, got 0x%08X \n", 
 			__func__, MICRO_VERSION, addr);
+		work.ver_check = MISMATCH;
 	}
 	
 	work.state = SUCCESS;
-	
-deinit:
-if(work.reset) {
-	reset_micro(LOW);
-	gpio_deinit();
+err:
+	return;
 }
-serial_deinit();
+
+static void go_action(void)
+{
+	if(stm_go(STM_FLASH_BASE) != 0) {
+		work.state = FAILED;
+		goto err;
+	}
+
+	sleep(5);
+	work.state = SUCCESS;
 
 err:
 	return;
 }
+
 
 static void read_action(void)
 {
@@ -252,6 +229,20 @@ static void read_action(void)
 static int start(void)
 {
 	work.state = START;
+
+	if(work.reset) {
+		if(gpio_init() != 0) {
+			work.state = FAILED;
+			goto err;
+		}
+		reset_micro(HIGH);
+	}
+	serial_init();
+	if(stm_init_seq() != 0) {
+		work.state = FAILED;
+		goto deinit;
+	}
+	work.state = INITED;
 	
 	switch(work.task) {
 		case FLASH_WRITE:
@@ -262,13 +253,38 @@ static int start(void)
 			break;
 		case FLASH_QUERY:
 			query_action();
+			if(work.ver_check == MATCH) {
+				go_action();
+			} else {
+				fprintf(stderr, "Need to update micro! \n");
+				write_action();
+			}
 			break;
 		default:
 			break;
 	}
-	
+
+deinit:
+	if(work.reset) {
+		reset_micro(LOW);
+		gpio_deinit();
+	}
+	serial_deinit();
+err:
 	return work.state;
 }
+
+//static void write_file(uint8_t *data, int size)
+//{
+	//FILE *fp;
+	//ssize_t r;
+	
+	//fp = fopen("flash.bin", "w+b");
+	
+	//r = fwrite(data, sizeof(uint8_t), size, fp);
+	
+	//printf("%s: wrote %d bytes \n", __func__, r);
+//}
 
 int main(int argc, char **argv)
 {

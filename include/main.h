@@ -22,4 +22,10 @@ typedef enum {
 	FAILED,
 } work_state;
 
+typedef enum {
+	MATCH = 0,
+	MISMATCH,
+	UNCHECKED,
+} version_check;
+
 #endif // _MAIN_H

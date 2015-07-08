@@ -9,14 +9,14 @@
 #include "stm32.h"
 #include "serial.h"
 
-static void write_file(uint8_t *data, int size);
-
 stm32_err_t stm_get_ack(void)
 {
 	uint8_t byte;
 	
 	serial_read(&byte, 1);
 	
+	fprintf(stdout, "read 0x%02X \n", byte);
+
 	if(byte == STM_ACK) {
 		return STM32_ERR_OK;
 	}
@@ -129,7 +129,6 @@ int stm_read_mem(uint32_t address, uint8_t *data, unsigned int len )
 {
 	uint8_t cmd[2];
 	uint8_t buf[5];
-	//uint8_t data[256];
 	ssize_t r;
 	
 	cmd[0] = STM_CMD_READ_MEM;
@@ -163,8 +162,8 @@ int stm_read_mem(uint32_t address, uint8_t *data, unsigned int len )
 		return 1;
 	}
 	
-	cmd[0] = len;
-	cmd[1] = (len) ^ 0xFF;
+	cmd[0] = len - 1;
+	cmd[1] = (len - 1) ^ 0xFF;
 	printf("%s: writing len %d to stm \n",__func__, len);
 	r = serial_write(&cmd, 2);
 	if(r < 1) {
@@ -177,8 +176,6 @@ int stm_read_mem(uint32_t address, uint8_t *data, unsigned int len )
 	}
 	
 	serial_read(data, len);
-
-	write_file(data, 256);
 
 	return 0;
 }
@@ -312,21 +309,6 @@ int stm_go(uint32_t address)
 		printf("%s: write failed! \n", __func__);
 		return 1;
 	}
-	
-	printf("%s: sleeping \n",__func__);
-	sleep(10);
 
 	return 0;
-}
-
-static void write_file(uint8_t *data, int size)
-{
-	FILE *fp;
-	ssize_t r;
-	
-	fp = fopen("flash.bin", "w+b");
-	
-	r = fwrite(data, sizeof(uint8_t), size, fp);
-	
-	printf("%s: wrote %d bytes \n", __func__, r);
 }
