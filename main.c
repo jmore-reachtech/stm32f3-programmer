@@ -257,7 +257,6 @@ static int start(void)
 				go_action();
 			} else {
 				fprintf(stderr, "Need to update micro! \n");
-				write_action();
 			}
 			break;
 		default:
