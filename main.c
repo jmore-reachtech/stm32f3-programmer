@@ -31,7 +31,7 @@ struct {
 } work = {
 	.task = FLASH_NONE,
 	.state = IDLE,
-	.reset = 0x1,
+	.reset = 1,
 	.filename = "main.bin",
 	.addr = USER_DATA_OFFSET,
 	.ver_check = UNCHECKED,
@@ -43,6 +43,8 @@ struct {
 
 static void reset_micro(pin_state s)
 {
+	fprintf(stdout, "%s: \n", __func__);
+
 	gpio_toggle_boot(s);
 	sleep(1);
 	gpio_toggle_reset(LOW);
@@ -53,9 +55,11 @@ static void reset_micro(pin_state s)
 
 static void sig_handler(int sig, siginfo_t *siginfo, void *context)
 {
-	reset_micro(LOW);
+	if(work.reset) {
+		reset_micro(LOW);
+		gpio_deinit();
+	}
 
-	gpio_deinit();
 	serial_deinit();
 }
 
@@ -152,7 +156,7 @@ static int parse_options(int argc, char *argv[])
 				work.sport.device = strdup(optarg);
 				break;
 			case 's':
-				work.reset = 0x0;
+				work.reset = 0;
 				break;
 			case 'q':
 				if(work.task != FLASH_NONE) {
@@ -231,11 +235,15 @@ static int start(void)
 	work.state = START;
 
 	if(work.reset) {
+		fprintf(stdout, "performing reset! \n");
 		if(gpio_init() != 0) {
+			fprintf(stderr, "gpio init failed! \n");
 			work.state = FAILED;
 			goto err;
 		}
 		reset_micro(HIGH);
+	} else {
+		sleep(1);
 	}
 	serial_init();
 	if(stm_init_seq() != 0) {
@@ -253,15 +261,14 @@ static int start(void)
 			break;
 		case FLASH_QUERY:
 			query_action();
-			if(work.ver_check == MATCH) {
-				go_action();
-			} else {
+			if(work.ver_check != MATCH) {
 				fprintf(stderr, "Need to update micro! \n");
 			}
 			break;
 		default:
 			break;
 	}
+	go_action();
 
 deinit:
 	if(work.reset) {
