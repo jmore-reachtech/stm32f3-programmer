@@ -1,2 +1,4 @@
 serial
 programmer
+.clang
+*.swp
