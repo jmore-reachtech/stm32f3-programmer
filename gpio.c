@@ -8,6 +8,12 @@
 #include "linux/i2c-dev-user.h"
 #include "gpio.h"
 
+#ifdef DEBUG
+#define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
+#else
+#define LOG(format, ...)
+#endif
+
 static int fd = 0;
 
 int gpio_init(void)
@@ -16,36 +22,36 @@ int gpio_init(void)
 	
 	fd = open(I2C_DEV, O_RDWR);
 	if(fd < 0) {
-		printf("open %s failed! \n", I2C_DEV);
+		LOG("open %s failed!", I2C_DEV);
 		return -ENODEV;
 	}
 	
 	rv = ioctl(fd, I2C_SLAVE, I2C_ADDR);
 	if(rv < 0) {
-		printf("slave ioctl 0x%02X failed! \n", I2C_ADDR);
+		LOG("slave ioctl 0x%02X failed!", I2C_ADDR);
 		return -ENODEV;
 	}
 	
 	rv = i2c_smbus_write_byte_data(fd, I2C_CTRL_REG, 0xF3);
 	if(rv < 0) {
-		printf("smbus write failed! \n");
+		perror("smbus ctrl_reg write failed!");
 		return -1;
 	}
 	rv = i2c_smbus_write_byte_data(fd, I2C_OUT_REG, 0x08);
 	if(rv < 0) {
-		printf("smbus write failed! \n");
+		perror("smbus out_reg write failed!");
 		return -1;
 	}
 	
 	rv = i2c_smbus_read_byte_data(fd, I2C_CTRL_REG);
 	if(rv < 0) {
-		printf("smbus read failed! \n");
+		perror("smbus ctrl_reg read failed!");
 		return -1;
 	}
 	
 	rv = i2c_smbus_read_byte_data(fd, I2C_OUT_REG);
 	if(rv < 0) {
-		printf("smbus read failed! \n");
+		perror("smbus out_reg read failed!");
 		return -1;
 	}
 	
@@ -57,11 +63,11 @@ void gpio_deinit(void)
 	int rv = 0;
 	rv = i2c_smbus_write_byte_data(fd, I2C_CTRL_REG, 0xFF);
 	if(rv < 0) {
-		printf("smbus write failed! \n");
+		LOG("smbus write failed!");
 	}
 	rv = i2c_smbus_write_byte_data(fd, I2C_OUT_REG, 0x00);
 	if(rv < 0) {
-		printf("smbus write failed! \n");
+		LOG("smbus write failed!");
 	}
 	
 	if(fd) {
@@ -75,7 +81,7 @@ void gpio_toggle_boot(pin_state p)
 	
 	reg = i2c_smbus_read_byte_data(fd, I2C_OUT_REG);
 	if(reg < 0) {
-		printf("smbus read failed! \n");
+		LOG("smbus read failed!");
 	}
 
 	switch (p) {
@@ -86,12 +92,12 @@ void gpio_toggle_boot(pin_state p)
 			reg |= 1 << 2;
 			break;
 		default:
-			printf("invalid case %d \n", p);
+			LOG("invalid case %d", p);
 	}
 	
 	rv = i2c_smbus_write_byte_data(fd, I2C_OUT_REG, reg);
 	if(rv < 0) {
-		printf("smbus write failed! \n");
+		LOG("smbus write failed!");
 	}
 }
 
@@ -100,7 +106,7 @@ void gpio_toggle_reset(pin_state p)
 	int rv = 0, reg = 0;
 	reg = i2c_smbus_read_byte_data(fd, I2C_OUT_REG);
 	if(reg < 0) {
-		printf("smbus read failed! \n");
+		LOG("smbus read failed!");
 	}
 
 	switch (p) {
@@ -111,11 +117,11 @@ void gpio_toggle_reset(pin_state p)
 			reg |= 1 << 3;			
 			break;
 		default:
-			printf("invalid case %d \n", p);
+			LOG("invalid case %d", p);
 	}
 	
 	rv = i2c_smbus_write_byte_data(fd, I2C_OUT_REG, reg);
 	if(rv < 0) {
-		printf("smbus write failed! \n");
+		LOG("smbus write failed!");
 	}
 }

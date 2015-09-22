@@ -12,6 +12,12 @@
 #include "gpio.h"
 #include "stm32.h"
 
+#ifdef DEBUG
+#define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
+#else
+#define LOG(format, ...) 
+#endif
+
 static void reset_micro(pin_state s);
 static int update_firmware(char *path);
 static int start(void);
@@ -43,7 +49,7 @@ struct {
 
 static void reset_micro(pin_state s)
 {
-	fprintf(stdout, "%s: \n", __func__);
+	LOG("%s: ", __func__);
 
 	gpio_toggle_boot(s);
 	sleep(1);
@@ -74,7 +80,7 @@ static int update_firmware(char *path)
 
 	fp = fopen(path, "rb");
 	if(fp == NULL) {
-		fprintf(stderr, "File '%s' not found!", path);
+		LOG("File '%s' not found!", path);
 		return 1;
 	}
 
@@ -82,17 +88,17 @@ static int update_firmware(char *path)
 	size = ftell (fp);
 	rewind (fp);
 
-	printf("%s: file size is %ld \n", __func__, size);
+	LOG("%s: file size is %ld", __func__, size);
 
 	r = fread (tmp,1,MAX_RW_SIZE,fp);
 	while (r > 0) {
 		if(r < MAX_RW_SIZE) {
-			printf("\n%s: padding buffer, read %d \n", __func__, r);
+			LOG("\n%s: padding buffer, read %d", __func__, r);
 			for(i = r; i < MAX_RW_SIZE; i++) {
 				tmp[i] = 0xFF;
 			}
 		}
-		printf("\n%s: writing %d bytes to flash \n", __func__, MAX_RW_SIZE);
+		LOG("\n%s: writing %d bytes to flash", __func__, MAX_RW_SIZE);
 		stm_write_mem(addr,tmp,MAX_RW_SIZE);
 		addr += r;
 
@@ -102,6 +108,12 @@ static int update_firmware(char *path)
 	fclose (fp);
 	
 	return 0;
+}
+
+static void display_version(void)
+{
+   fprintf(stdout, "\tApp version: %d.%d.%d \n", VERSION_MAJOR(APP_VERSION),
+        VERSION_MINOR(APP_VERSION), VERSION_PATCH(APP_VERSION)); 
 }
 
 static void display_help(char *prog_name)
@@ -116,6 +128,7 @@ static void display_help(char *prog_name)
     fprintf(stdout, "  -r filename           Read flash to file (default:%s)\n", work.filename);
     fprintf(stdout, "  -s                    Skip micro reset (default:%s)\n", work.reset ? "No" : "Yes");
     fprintf(stdout, "  -q                    Query micro version(default:0x%08X)\n", work.addr);
+    fprintf(stdout, "  -v                    Display version and exit\n");
     fprintf(stdout, "  -h                    Display this help and exit\n");
     fprintf(stdout, "\n");
 }
@@ -124,18 +137,25 @@ static int parse_options(int argc, char *argv[])
 {
 	int c;
 	
-	while ((c = getopt(argc, argv, "hw:r:b:t:sq")) != -1) {
+	while ((c = getopt(argc, argv, "vhw:r:b:t:sq")) != -1) {
 		switch(c) {
 			case 'h':
 				if(work.task != FLASH_NONE) {
-					fprintf(stderr,"Multiple actions not supported! \n");
+					LOG("Multiple actions not supported!");
 					return 1;
 				}
 				work.task = FLASH_HELP;
 				;break;
+            case 'v':
+				if(work.task != FLASH_NONE) {
+					LOG("Multiple actions not supported!");
+					return 1;
+				}
+				work.task = FLASH_VERSION;
+                break;
 			case 'w':
 				if(work.task != FLASH_NONE) {
-					fprintf(stderr,"Multiple actions not supported! \n");
+					LOG("Multiple actions not supported!");
 					return 1;
 				}
 				work.filename = optarg;
@@ -143,7 +163,7 @@ static int parse_options(int argc, char *argv[])
 				break;
 			case 'r':
 				if(work.task != FLASH_NONE) {
-					fprintf(stderr,"Multiple actions not supported! \n");
+					LOG("Multiple actions not supported!");
 					return 1;
 				}
 				work.filename = optarg;
@@ -160,7 +180,7 @@ static int parse_options(int argc, char *argv[])
 				break;
 			case 'q':
 				if(work.task != FLASH_NONE) {
-					fprintf(stderr,"Multiple actions not supported! \n");
+					LOG("Multiple actions not supported!");
 					return 1;
 				}
 				work.task = FLASH_QUERY;
@@ -195,12 +215,13 @@ static void query_action(void)
 	}
 
 	addr = data[3] << 24 | data[2] << 16 | data[1] << 8 | data[0] << 0;
-	if(addr == MICRO_VERSION) {
-		printf("%s: version correct 0x%08X \n", __func__, addr);
+    
+    fprintf(stdout, "\tMicro version: %d.%d.%d \n", VERSION_MAJOR(addr),
+        VERSION_MINOR(addr), VERSION_PATCH(addr));
+
+	if(addr == APP_VERSION) {
 		work.ver_check = MATCH;
 	} else {
-		printf("%s: version mismatch expected 0x%08X, got 0x%08X \n", 
-			__func__, MICRO_VERSION, addr);
 		work.ver_check = MISMATCH;
 	}
 	
@@ -226,7 +247,7 @@ err:
 
 static void read_action(void)
 {
-	fprintf(stdout, "Flash read not implemented \n");
+	LOG("Flash read not implemented");
 	work.state = SUCCESS;
 }
 
@@ -235,9 +256,9 @@ static int start(void)
 	work.state = START;
 
 	if(work.reset) {
-		fprintf(stdout, "performing reset! \n");
+		LOG("performing reset!");
 		if(gpio_init() != 0) {
-			fprintf(stderr, "gpio init failed! \n");
+			LOG("gpio init failed!");
 			work.state = FAILED;
 			goto err;
 		}
@@ -262,7 +283,7 @@ static int start(void)
 		case FLASH_QUERY:
 			query_action();
 			if(work.ver_check != MATCH) {
-				fprintf(stderr, "Need to update micro! \n");
+				LOG("Need to update micro!");
 			}
 			break;
 		default:
@@ -316,6 +337,11 @@ int main(int argc, char **argv)
 		display_help(argv[0]);
 		goto close;
 	}
+    
+	if(work.task == FLASH_VERSION) {
+        display_version();
+        goto close;
+    }
 
 	ret = start();
 

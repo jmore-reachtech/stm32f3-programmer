@@ -11,6 +11,12 @@
 
 #include "serial.h"
 
+#ifdef DEBUG
+#define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
+#else
+#define LOG(format, ...)
+#endif
+
 const struct {
     uint32_t    key;
     uint32_t    speed;
@@ -75,7 +81,7 @@ void serial_init(void)
 	fd = open(TTY_DEV, O_RDWR | O_NOCTTY);
 	if (fd == -1) {
 		/* Could not open the port. */
-		printf("open_port: Unable to open %s - \n", TTY_DEV);
+		LOG("open_port: Unable to open %s", TTY_DEV);
 		return;
 	}
     
@@ -98,7 +104,7 @@ int serial_read(void *buf, size_t nbyte)
 	ssize_t r;
 	uint8_t *pos = (uint8_t *)buf;
 
-	printf("%s: reading %d bytes \n", __func__, nbyte);
+	LOG("%s: reading %d bytes", __func__, nbyte);
 	while (nbyte) {
 		r = read(fd, pos, nbyte);
 		if (r == 0)
@@ -116,7 +122,7 @@ int serial_write(void *buf, size_t nbyte)
 {
 	ssize_t r;
 	
-	printf("%s: writing %d bytes \n", __func__, nbyte);
+	LOG("%s: writing %d bytes", __func__, nbyte);
 	r = write(fd, buf, nbyte);
 	
 	return r;
@@ -175,7 +181,7 @@ uint32_t baud_str_to_key(const char *baud_str)
 
     if (x >= NELEM(BaudTable))
     {
-        fprintf(stderr, "Warning: Unknown baud rate '%s'. Defaulting to %s.\n", baud_str, baud_key_to_str(baud_key));
+        LOG("Warning: Unknown baud rate '%s'. Defaulting to %s", baud_str, baud_key_to_str(baud_key));
     }
 
     if (baud_buf != NULL)
