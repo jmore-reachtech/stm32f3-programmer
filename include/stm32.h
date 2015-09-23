@@ -28,6 +28,12 @@ typedef enum {
 	STM32_ERR_NO_CMD,	/* Command not available in bootloader */
 } stm32_err_t;
 
+typedef enum {
+    STM32_IDLE,
+    STM32_READY,
+    STM32_FAILED,
+} stm32_state_t;
+
 #define GPIO_RESET_MASK 0xF7
 #define GPIO_BOOTP_MASK 0xFB
 

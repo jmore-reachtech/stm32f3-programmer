@@ -23,21 +23,32 @@ typedef enum {
 	FLASH_NONE,
 	FLASH_QUERY,
     FLASH_VERSION,
+    FLASH_INTERACTIVE,
 } work_action;
 
 typedef enum {
-	SUCCESS = 0,
-	IDLE,
-	START,
-	INITED,
-	ACTIVE,
-	FAILED,
-} work_state;
+	TASK_SUCCESS = 0,
+	TASK_IDLE,
+	TASK_START,
+	TASK_ACTIVE,
+	TASK_FAILED,
+} task_state_t;
 
 typedef enum {
 	MATCH = 0,
 	MISMATCH,
 	UNCHECKED,
 } version_check;
+
+typedef enum {
+    CMD_EXIT = 0,
+    CMD_HELP,
+    CMD_MICRO_VER,
+    CMD_APP_VER,
+    CMD_UPDATE,
+    CMD_FIRMWARE,
+    CMD_STATUS,
+    CMD_UNKNOWN,
+} cmd_action;
 
 #endif // _MAIN_H
