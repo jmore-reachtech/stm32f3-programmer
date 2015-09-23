@@ -68,7 +68,7 @@ static void micro_init(void)
 		LOG("performing reset!");
 		if(gpio_init() != 0) {
 			LOG("gpio init failed!");
-			work.state = TASK_FAILED;
+			work.micro_state = STM32_FAILED;
 		}
 		reset_micro(HIGH);
 	} else {
@@ -76,10 +76,10 @@ static void micro_init(void)
 	}
 	serial_init();
 	if(stm_init_seq() != 0) {
-		work.state = TASK_FAILED;
+		work.micro_state = STM32_FAILED;
 	}
 
-	work.state = INITED;
+	work.micro_state = STM32_READY;
 }
 
 static void micro_deinit(void)
@@ -243,11 +243,11 @@ static int parse_options(int argc, char *argv[])
 static void write_action(void)
 {
 	if(stm_erase_mem() != 0) {
-		work.state = FAILED;
+		work.micro_state = STM32_FAILED;
 		goto err;
 	}
 	update_firmware(work.filename);
-	work.state = SUCCESS;
+	work.task_state = TASK_SUCCESS;
 
 err:
 	return;
@@ -259,7 +259,7 @@ static void query_action(void)
 	uint32_t addr = 0x0;
 
 	if(stm_read_mem(work.addr, data, 4) != 0) {
-		work.state = FAILED;
+		work.micro_state = STM32_FAILED;
 		goto err;
 	}
 
@@ -274,7 +274,7 @@ static void query_action(void)
 		work.ver_check = MISMATCH;
 	}
 	
-	work.state = SUCCESS;
+	work.task_state = TASK_SUCCESS;
 err:
 	return;
 }
@@ -282,12 +282,12 @@ err:
 static void go_action(void)
 {
 	if(stm_go(STM_FLASH_BASE) != 0) {
-		work.state = FAILED;
+		work.micro_state = STM32_FAILED;
 		goto err;
 	}
 
 	sleep(5);
-	work.state = SUCCESS;
+	work.task_state = TASK_SUCCESS;
 
 err:
 	return;
@@ -411,7 +411,7 @@ done:
 static void read_action(void)
 {
 	LOG("Flash read not implemented");
-	work.state = SUCCESS;
+	work.task_state = TASK_SUCCESS;
 }
 
 static void run_task(void)
@@ -436,10 +436,10 @@ static void run_task(void)
 
 static int start(void)
 {
-	work.state = START;
+	work.task_state = TASK_START;
 
     micro_init();
-    if(work.state == FAILED) {
+    if(work.task_state == TASK_FAILED) {
         goto deinit;
     }
 
@@ -447,11 +447,11 @@ static int start(void)
 
 	go_action();
     
-    work.state = SUCCESS;
+    work.task_state = TASK_SUCCESS;
 
 deinit:
     micro_deinit();
-	return work.state;
+	return work.task_state;
 }
 
 //static void write_file(uint8_t *data, int size)
