@@ -1,4 +1,6 @@
-serial
-programmer
+isp
+ispd
 .clang
 *.swp
+*.o
+*.a

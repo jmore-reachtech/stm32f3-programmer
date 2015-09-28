@@ -7,7 +7,7 @@
 #include <signal.h>
 #include <termios.h>
 
-#include "main.h"
+#include "common.h"
 #include "serial.h"
 #include "gpio.h"
 #include "stm32.h"

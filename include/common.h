@@ -1,5 +1,5 @@
-#ifndef _MAIN_H
-#define _MAIN_H
+#ifndef _COMMON_H
+#define _COMMON_H
 
 #define USER_DATA_OFFSET  0x0803F800
 
@@ -51,4 +51,4 @@ typedef enum {
     CMD_UNKNOWN,
 } cmd_action;
 
-#endif // _MAIN_H
+#endif // _COMMON_H
