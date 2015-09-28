@@ -1,17 +1,7 @@
-all: prog progd
-
-progd: common
-	$(MAKE) -C progd 
-
-prog: common
-	$(MAKE) -C prog 
-
-common:
-	$(MAKE) -C common 
+all:
+	$(MAKE) -C src
 
 clean:
-	$(MAKE) -C common clean
-	$(MAKE) -C prog clean
-	$(MAKE) -C progd clean
+	$(MAKE) -C src clean
 
 .PHONY: common clean

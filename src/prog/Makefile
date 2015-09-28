@@ -1,8 +1,8 @@
 CFLAGS = -c -Wall -g
-INC = -I../include 
-LIBS = ../common/libcommon.a
+INC = -I../../include -I../include
+LIBS = ../../lib/libcommon.a
 
-TARGET = ispd
+TARGET = isp
 
 OBJECTS = $(patsubst %.c, %.o, $(wildcard *.c))
 
