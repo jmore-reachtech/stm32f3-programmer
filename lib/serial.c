@@ -128,7 +128,7 @@ int serial_write(void *buf, size_t nbyte)
 	return r;
 }
 
-const char *baud_key_to_str(uint32_t baud_key)
+const char *serial_baud_key_to_str(uint32_t baud_key)
 {
     static char buffer[32] = { 0 };
     int x;
@@ -155,7 +155,7 @@ const char *baud_key_to_str(uint32_t baud_key)
     return buffer;
 }
 
-uint32_t baud_str_to_key(const char *baud_str)
+uint32_t serial_baud_str_to_key(const char *baud_str)
 {
     uint32_t baud_key = __MAX_BAUD;
     char *baud_buf = NULL;

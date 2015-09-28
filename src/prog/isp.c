@@ -160,7 +160,7 @@ static void display_help(char *prog_name)
     fprintf(stdout, "\n");
     fprintf(stdout, "Options:\n");
     fprintf(stdout, "  -b baud_rate          Set baud rate (default:%s)\n", 
-        baud_key_to_str(work.sport.baud_rate));
+        serial_baud_key_to_str(work.sport.baud_rate));
     fprintf(stdout, "  -t tty_device         Set serial dev (default:%s)\n", 
         work.sport.device);
     fprintf(stdout, "  -w filename           Write flash from file (default:%s)\n", 
@@ -221,7 +221,7 @@ static int parse_options(int argc, char *argv[])
 				work.task = FLASH_READ;
 				break;
 			case 'b':
-				work.sport.baud_rate = baud_str_to_key(optarg);
+				work.sport.baud_rate = serial_baud_str_to_key(optarg);
 				break;
 			case 't':
 				work.sport.device = strdup(optarg);

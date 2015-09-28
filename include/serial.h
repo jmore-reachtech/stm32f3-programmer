@@ -12,7 +12,7 @@ void serial_init(void);
 void serial_deinit(void);
 int serial_read(void *buf, size_t nbyte);
 int serial_write(void *buf, size_t nbyte);
-uint32_t baud_str_to_key(const char *baud_str);
-const char *baud_key_to_str(uint32_t baud_key);
+uint32_t serial_baud_str_to_key(const char *baud_str);
+const char *serial_baud_key_to_str(uint32_t baud_key);
 
 #endif // _SERIAL_H
