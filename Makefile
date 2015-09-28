@@ -1,20 +1,17 @@
-BIN = programmer
+all: prog progd
 
-CFLAGS  = -g -Wall
+progd: common
+	$(MAKE) -C progd 
 
-INCLUDE = -I./include
+prog: common
+	$(MAKE) -C prog 
 
-SRCS = main.c serial.c gpio.c stm32.c
-
-all: main
-
-main: $(SRCS)
-	$(CC) $(CFLAGS) $(INCLUDE) $(SRCS) -o $(BIN)
-	
-deploy: main
-	scp $(BIN) root@192.168.0.167:
+common:
+	$(MAKE) -C common 
 
 clean:
-	rm -f $(BIN)
-	
-PHONY: clean deploy
+	$(MAKE) -C common clean
+	$(MAKE) -C prog clean
+	$(MAKE) -C progd clean
+
+.PHONY: common clean
