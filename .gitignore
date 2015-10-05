@@ -1,5 +1,6 @@
 isp
 ispd
+ispd_client
 .clang
 *.swp
 *.o
