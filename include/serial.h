@@ -3,15 +3,16 @@
 
 #define TTY_DEV "/dev/ttymxc4"
 
-typedef struct serial_port_options {
+struct serial_port_options {
+    int fd;
 	const char *device;
 	uint32_t baud_rate;
-} serial_port_options;
+};
 
-void serial_init(void);
-void serial_deinit(void);
-int serial_read(void *buf, size_t nbyte);
-int serial_write(void *buf, size_t nbyte);
+int serial_init(struct serial_port_options *opts);
+void serial_deinit(struct serial_port_options *opts);
+int serial_read(struct serial_port_options *opts, void *buf, size_t nbyte);
+int serial_write(struct serial_port_options *opts, void *buf, size_t nbyte);
 uint32_t serial_baud_str_to_key(const char *baud_str);
 const char *serial_baud_key_to_str(uint32_t baud_key);
 

@@ -7,7 +7,6 @@
 #include <errno.h>
 
 #include "stm32.h"
-#include "serial.h"
 
 #ifdef DEBUG
 #define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
@@ -15,11 +14,11 @@
 #define LOG(format, ...)
 #endif
 
-stm32_err_t stm_get_ack(void)
+stm32_err_t stm_get_ack(struct serial_port_options *opts)
 {
 	uint8_t byte;
 	
-	serial_read(&byte, 1);
+	serial_read(opts, &byte, 1);
 	
 	LOG("read 0x%02X", byte);
 
@@ -34,19 +33,19 @@ stm32_err_t stm_get_ack(void)
 	return STM32_ERR_UNKNOWN;
 }
 
-int stm_init_seq(void)
+int stm_init_seq(struct serial_port_options *opts)
 {
 	uint8_t cmd = STM_INIT;
 	ssize_t r;
 	
 	LOG("%s: writing 0x%X to stm",__func__, cmd);
-	r = serial_write(&cmd, 1);
+	r = serial_write(opts, &cmd, 1);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
 
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
@@ -54,7 +53,7 @@ int stm_init_seq(void)
 	return 0;
 }
 
-int stm_get_cmds(void)
+int stm_get_cmds(struct serial_port_options *opts)
 {
 	uint8_t cmd[2], buf[32];
 	ssize_t r;
@@ -64,22 +63,22 @@ int stm_get_cmds(void)
 	cmd[1] = STM_CMD_GET ^ 0xFF;
 	
 	LOG("%s: writing 0x%02X to stm",__func__, cmd[0]);
-	r = serial_write(&cmd, 2);
+	r = serial_write(opts, &cmd, 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
 	
 	LOG("%s: getting byte count",__func__);
-	serial_read(buf, 1);
+	serial_read(opts, buf, 1);
 	LOG("%s: getting comamnds %d",__func__, buf[0]);
-	serial_read(buf, buf[0] + 1);
+	serial_read(opts, buf, buf[0] + 1);
 	
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
@@ -92,7 +91,7 @@ int stm_get_cmds(void)
 }
 
 
-int stm_erase_mem(void)
+int stm_erase_mem(struct serial_port_options *opts)
 {
 	uint8_t cmd[2];
 	uint8_t buf[3];
@@ -106,24 +105,24 @@ int stm_erase_mem(void)
 	buf[2] = 0x00;
 	
 	LOG("%s: writing 0x%02X to stm",__func__, cmd[0]);
-	r = serial_write(&cmd, 2);
+	r = serial_write(opts, &cmd, 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
 	
 	LOG("%s: writing 0x%02X%02X to stm",__func__, buf[0], buf[1]);
 	//r = write(fd_tty, &buf, 3);
-	r = serial_write(&buf, 3);
+	r = serial_write(opts, &buf, 3);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
@@ -131,7 +130,8 @@ int stm_erase_mem(void)
 	return 0;
 }
 
-int stm_read_mem(uint32_t address, uint8_t *data, unsigned int len )
+int stm_read_mem(struct serial_port_options *opts, uint32_t address, 
+        uint8_t *data, unsigned int len )
 {
 	uint8_t cmd[2];
 	uint8_t buf[5];
@@ -147,23 +147,23 @@ int stm_read_mem(uint32_t address, uint8_t *data, unsigned int len )
 	buf[4] = buf[0] ^ buf[1] ^ buf[2] ^ buf[3];
 	
 	LOG("%s: writing 0x%02X to stm",__func__, cmd[0]);
-	r = serial_write(&cmd, 2);
+	r = serial_write(opts, &cmd, 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
 	
 	LOG("%s: writing address 0x%08X to stm",__func__, address);
-	r = serial_write(&buf, 5);
+	r = serial_write(opts, &buf, 5);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
@@ -171,22 +171,23 @@ int stm_read_mem(uint32_t address, uint8_t *data, unsigned int len )
 	cmd[0] = len - 1;
 	cmd[1] = (len - 1) ^ 0xFF;
 	LOG("%s: writing len %d to stm",__func__, len);
-	r = serial_write(&cmd, 2);
+	r = serial_write(opts, &cmd, 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
 	
-	serial_read(data, len);
+	serial_read(opts, data, len);
 
 	return 0;
 }
 
-int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len)
+int stm_write_mem(struct serial_port_options *opts, uint32_t address, 
+        uint8_t data[], unsigned int len)
 {
 	uint8_t cs;
 	uint8_t cmd[2];
@@ -204,23 +205,23 @@ int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len)
 	buf[4] = buf[0] ^ buf[1] ^ buf[2] ^ buf[3];
 
 	LOG("%s: writing cmd 0x%02X to stm",__func__, cmd[0]);
-	r = serial_write(&cmd, 2);
+	r = serial_write(opts, &cmd, 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
 
 	LOG("%s: writing address 0x%08X to stm",__func__, address);
-	r = serial_write(&buf, 5);
+	r = serial_write(opts, &buf, 5);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
@@ -237,13 +238,13 @@ int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len)
 	
 	buf[len + 1] = cs;
 	LOG("%s: writing data to stm",__func__);
-	r = serial_write(&buf, len + 2);
+	r = serial_write(opts, &buf, len + 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
 
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
@@ -251,7 +252,7 @@ int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len)
 	return 0;
 }
 
-int stm_get_id(void)
+int stm_get_id(struct serial_port_options *opts)
 {
 	uint8_t ver[32];
 	uint8_t cmd[2];
@@ -261,21 +262,21 @@ int stm_get_id(void)
 	cmd[1] = STM_CMD_GET_ID ^ 0xFF;
 	
 	LOG("%s: writing 0x%02X to stm",__func__, cmd[0]);
-	r = serial_write(&cmd, 2);
+	r = serial_write(opts, &cmd, 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
 	
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
 
-	serial_read(&ver,3);
+	serial_read(opts, &ver,3);
 	LOG("%s: ID 0x%02X%02X",__func__, ver[1], ver[2]);
 
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
@@ -283,7 +284,7 @@ int stm_get_id(void)
 	return 0;
 }
 
-int stm_go(uint32_t address)
+int stm_go(struct serial_port_options *opts, uint32_t address)
 {
 	uint8_t cmd[2];
 	uint8_t buf[5];
@@ -299,18 +300,18 @@ int stm_go(uint32_t address)
 	buf[4] = buf[0] ^ buf[1] ^ buf[2] ^ buf[3];
 	
 	LOG("%s: writing 0x%02X to stm",__func__, cmd[0]);
-	r = serial_write(&cmd, 2);
+	r = serial_write(opts, &cmd, 2);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;
 	}
-	if( stm_get_ack() != STM32_ERR_OK) {
+	if( stm_get_ack(opts) != STM32_ERR_OK) {
 		LOG("%s: No ACK!", __func__);
 		return 1;
 	}
 
 	LOG("%s: writing address 0x%08X to stm",__func__, address);
-	r = serial_write(&buf, 5);
+	r = serial_write(opts, &buf, 5);
 	if(r < 1) {
 		LOG("%s: write failed!", __func__);
 		return 1;

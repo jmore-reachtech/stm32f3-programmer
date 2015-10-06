@@ -1,6 +1,8 @@
 #ifndef _STM32_H
 #define _STM32_H
 
+#include "serial.h"
+
 #define STM_INIT 				0x7F
 #define STM_ACK 				0x79
 #define STM_NACK 				0x1F
@@ -37,13 +39,13 @@ typedef enum {
 #define GPIO_RESET_MASK 0xF7
 #define GPIO_BOOTP_MASK 0xFB
 
-stm32_err_t stm_get_ack(void);
-int stm_init_seq(void);
-int stm_get_cmds(void);
-int stm_erase_mem(void);
-int stm_read_mem(uint32_t address, uint8_t *data , unsigned int len);
-int stm_write_mem(uint32_t address, uint8_t data[], unsigned int len);
-int stm_get_id(void);
-int stm_go(uint32_t address);
+stm32_err_t stm_get_ack(struct serial_port_options *opt);
+int stm_init_seq(struct serial_port_options *opts);
+int stm_get_cmds(struct serial_port_options *opts);
+int stm_erase_mem(struct serial_port_options *opts);
+int stm_read_mem(struct serial_port_options *opts, uint32_t address, uint8_t *data , unsigned int len);
+int stm_write_mem(struct serial_port_options *opts, uint32_t address, uint8_t data[], unsigned int len);
+int stm_get_id(struct serial_port_options *opts);
+int stm_go(struct serial_port_options *opts, uint32_t address);
 
 #endif // _STM32_H

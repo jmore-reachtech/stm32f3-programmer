@@ -56,8 +56,6 @@ const struct {
 
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
 
-static int fd = 0;
-
 static void serial_tio_init(struct termios *t);
 
 static void serial_tio_init(struct termios *t)
@@ -74,39 +72,43 @@ static void serial_tio_init(struct termios *t)
     t->c_cc[VTIME] = 5;
 }
 
-void serial_init(void)
+int serial_init(struct serial_port_options *opts)
 {
 	struct termios tio;
 	
-	fd = open(TTY_DEV, O_RDWR | O_NOCTTY);
-	if (fd == -1) {
+	opts->fd = open(opts->device, O_RDWR | O_NOCTTY);
+	if (opts->fd == -1) {
 		/* Could not open the port. */
-		LOG("open_port: Unable to open %s", TTY_DEV);
-		return;
+		LOG("open_port: Unable to open %s", opts->device);
+		return opts->fd;
 	}
     
     serial_tio_init(&tio);
-    tcflush(fd, TCIFLUSH);
-    cfsetospeed(&tio, B57600);
-	cfsetispeed(&tio, B57600);
-	tcsetattr(fd, TCSANOW, &tio);
+    tcflush(opts->fd, TCIFLUSH);
+    cfsetospeed(&tio, opts->baud_rate);
+	cfsetispeed(&tio, opts->baud_rate);
+	tcsetattr(opts->fd, TCSANOW, &tio);
+
+    return opts->fd;
 }
 
-void serial_deinit(void)
+void serial_deinit(struct serial_port_options *opts)
 {
-	if(fd) {
-		close(fd);
+	if(opts->fd) {
+		close(opts->fd);
 	}
+
+    opts->fd = 0;
 }
 
-int serial_read(void *buf, size_t nbyte)
+int serial_read(struct serial_port_options *opts, void *buf, size_t nbyte)
 {
 	ssize_t r;
 	uint8_t *pos = (uint8_t *)buf;
 
 	LOG("%s: reading %d bytes", __func__, nbyte);
 	while (nbyte) {
-		r = read(fd, pos, nbyte);
+		r = read(opts->fd, pos, nbyte);
 		if (r == 0)
 			return 1;
 		if (r < 0)
@@ -118,12 +120,12 @@ int serial_read(void *buf, size_t nbyte)
 	return 0;
 }
 
-int serial_write(void *buf, size_t nbyte)
+int serial_write(struct serial_port_options *opts, void *buf, size_t nbyte)
 {
 	ssize_t r;
 	
 	LOG("%s: writing %d bytes", __func__, nbyte);
-	r = write(fd, buf, nbyte);
+	r = write(opts->fd, buf, nbyte);
 	
 	return r;
 }

@@ -35,7 +35,7 @@ struct {
 	char filename[128];
 	uint32_t addr;
 	version_check ver_check;
-	serial_port_options sport;
+	struct serial_port_options sport;
 } work = {
 	.task = FLASH_NONE,
 	.task_state = TASK_IDLE,
@@ -45,6 +45,7 @@ struct {
 	.addr = USER_DATA_OFFSET,
 	.ver_check = UNCHECKED,
 	.sport = {
+        .fd = 0,
 		.device = TTY_DEV,
 		.baud_rate = B57600,
 	},
@@ -74,8 +75,8 @@ static void micro_init(void)
 	} else {
 		sleep(1);
 	}
-	serial_init();
-	if(stm_init_seq() != 0) {
+	serial_init(&(work).sport);
+	if(stm_init_seq(&(work).sport) != 0) {
 		work.micro_state = STM32_FAILED;
 	}
 
@@ -88,7 +89,7 @@ static void micro_deinit(void)
 		reset_micro(LOW);
 		gpio_deinit();
 	}
-	serial_deinit();
+	serial_deinit(&(work).sport);
 }
 
 static void sig_handler(int sig, siginfo_t *siginfo, void *context)
@@ -98,7 +99,7 @@ static void sig_handler(int sig, siginfo_t *siginfo, void *context)
 		gpio_deinit();
 	}
 
-	serial_deinit();
+	serial_deinit(&(work).sport);
 }
 
 static int update_firmware(char *path)
@@ -134,7 +135,7 @@ static int update_firmware(char *path)
 			}
 		}
 		LOG("\n%s: writing %d bytes to flash", __func__, MAX_RW_SIZE);
-		stm_write_mem(addr,tmp,MAX_RW_SIZE);
+		stm_write_mem(&(work).sport, addr,tmp,MAX_RW_SIZE);
 		addr += r;
 
         fprintf(stdout, "%d \n", (num_ops-- / scale));
@@ -244,7 +245,7 @@ static int parse_options(int argc, char *argv[])
 
 static void write_action(void)
 {
-	if(stm_erase_mem() != 0) {
+	if(stm_erase_mem(&(work).sport) != 0) {
 		work.micro_state = STM32_FAILED;
 		goto err;
 	}
@@ -260,7 +261,7 @@ static void query_action(void)
 	uint8_t data[4] = {0};
 	uint32_t addr = 0x0;
 
-	if(stm_read_mem(work.addr, data, 4) != 0) {
+	if(stm_read_mem(&(work).sport, work.addr, data, 4) != 0) {
 		work.micro_state = STM32_FAILED;
 		goto err;
 	}
@@ -283,7 +284,7 @@ err:
 
 static void go_action(void)
 {
-	if(stm_go(STM_FLASH_BASE) != 0) {
+	if(stm_go(&(work).sport, STM_FLASH_BASE) != 0) {
 		work.micro_state = STM32_FAILED;
 		goto err;
 	}

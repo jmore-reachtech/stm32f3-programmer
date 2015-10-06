@@ -1,4 +1,4 @@
-all clean test prog progd:
+all clean common test prog progd:
 	$(MAKE) -C src $@
 
-.PHONY: FORCE all clean test prog progd
+.PHONY: FORCE all clean test prog progd common
