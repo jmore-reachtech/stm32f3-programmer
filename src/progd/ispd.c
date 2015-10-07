@@ -69,7 +69,8 @@ void ispd_sig_handler(int sig)
 
 int main(int argc, char **argv)
 {
-    fd_set cur_fdSet; 
+    fd_set cur_fdset; 
+    int nfds = 0;
     struct isp_status *status = &isp_status;
     struct socket_status *sock = &(isp_status).sock_status;
     struct serial_port_status *sport = &(isp_status).sport_status;
@@ -90,19 +91,34 @@ int main(int argc, char **argv)
     if((sport->fd = serial_init(&(sport->opts))) < 0) {
         log_die_with_system_message("serial init failed");
     }
-    fprintf(stdout, "serial fd %d\n", sport->fd);
 
     if((sock->server_fd = ispd_socket_init(0, &(sock->addr_family),  
                                             sock->socket_path)) < 0) {
         log_die_with_system_message("socket init failed");
     }
-    fprintf(stdout, "socket fd %d\n", sock->server_fd);
     
-    FD_ZERO(&cur_fdSet);
-    FD_SET(sock->server_fd, &cur_fdSet);
+    FD_ZERO(&cur_fdset);
+    FD_SET(sock->server_fd, &cur_fdset);
+    FD_SET(sport->fd, &cur_fdset);
+    
+    nfds = MAX(sock->server_fd, sport->fd);
 
     status->running = 1;
     while(status->running) {
+        fd_set read_fdset = cur_fdset; 
+        const int sel = select(nfds+1, &read_fdset, 0, 0, 0);
+        fprintf(stdout,"sel ret %d\n", sel);
+
+        if (sel == -1) {
+            if (errno == EINTR) {
+                break;  /* drop out of inner while */
+            } else {
+                log_die_with_system_message("select() returned -1");
+            }
+        } else if (sel <= 0) {
+            continue;
+        }
+
         if((sock->client_fd = ispd_socket_accept(sock->server_fd, 
                                                     sock->addr_family)) < 0) {
             log_die_with_system_message("socket accept failed");

@@ -18,6 +18,8 @@
 #define	ISPD_DEFAULT_PORT 7890
 #define ISPD_UNIX_SOCKET "/tmp/ispSocket"
 
+#define MAX(A,B) ((A) > (B) ? (A) : (B))
+
 int ispd_socket_init(unsigned short port, int *addr_family,
     const char *socket_path);
 int ispd_socket_accept(int sfd, int addr_family);
