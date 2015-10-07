@@ -15,6 +15,12 @@
 #include "gpio.h"
 #include "stm32.h"
 
+#define DEBUG
+#ifdef DEBUG
+#define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
+#else
+#define LOG(format, ...)
+#endif
 
 struct socket_status {
     int server_fd;
@@ -44,10 +50,39 @@ static struct isp_status{
     },
 };
 
+static void process_cmd(char *buf)
+{
+    ispd_cmd_t cmd = IV;
+
+    switch (buf[1]) {
+        case 'S':
+            LOG("Start cmd");
+            cmd = MS;
+            break;
+        case 'V':
+            LOG("Version cmd");
+            cmd = MV;
+            break;
+        case 'U':
+            LOG("Update cmd");
+            cmd = MU;
+            break;
+        case 'G':
+            LOG("Go cmd");
+            cmd = MG;
+            break;
+        default:
+            LOG("Invalid cmd");
+            cmd = IV;
+    }
+}
+
 static int say_hello(int cfd)
 {
-    printf("server: sending 3 bytes '%s'\n", ISP_ACK);
-    if(send(cfd, ISP_ACK, 3 ,0) == -1) {
+    const char *msg = "micro_input.text=1\n";
+
+    LOG("server: sending %d bytes", strlen(msg));
+    if(send(cfd, msg, strlen(msg) ,0) == -1) {
         perror("send");
     }
 
@@ -56,7 +91,7 @@ static int say_hello(int cfd)
 
 void ispd_sig_handler(int sig)
 {
-    fprintf(stdout, "got sig TERM\n");
+    LOG("got sig TERM");
     isp_status.running = 0;
 }
 
@@ -103,11 +138,13 @@ int main(int argc, char **argv)
         fd_set read_fdset = cur_fdset;
         int read_count = 0;
         
+        LOG("Waiting for someone to blink");
         /* wait indefinitely for someone to blink */
         const int sel = select(nfds+1, &read_fdset, 0, 0, 0);
 
         if (sel == -1) {
             if (errno == EINTR) {
+                LOG("Select returned EINTR");
                 break;  /* drop out of inner while */
             } else {
                 log_die_with_system_message("select() returned -1");
@@ -125,21 +162,26 @@ int main(int argc, char **argv)
             FD_CLR(sock->server_fd, &cur_fdset);
             FD_SET(sock->client_fd, &cur_fdset);
             nfds = MAX(sock->client_fd, sport->fd);
+            LOG("New connection, say Hello");
             say_hello(sock->client_fd);
         }
 
         /* check for packet received on the client socket */
         if((sock->client_fd >= 0) && (FD_ISSET(sock->client_fd, &read_fdset))) {
-            char msg_buf[MAX_BUF_LEN];
+            char msg_buf[CMD_SIZE];
             read_count = ispd_socket_read(sock->client_fd, msg_buf,
                                                     sizeof(msg_buf));
             if (read_count < 0) {
+                LOG("Client closed socket");
                 FD_CLR(sock->client_fd, &cur_fdset);
                 FD_SET(sock->server_fd, &cur_fdset);
                 nfds = MAX(sock->server_fd, sport->fd);
                 sock->client_fd = -1;
             } else if (read_count > 0) {
-                serial_write(sport, msg_buf, read_count);
+                LOG("Client socket has data, %d bytes", read_count);
+                if(read_count == CMD_SIZE && msg_buf[CMD_SIZE-1] == 0xA) {
+                    process_cmd(msg_buf);
+                }
             }
  
         }
@@ -147,6 +189,7 @@ int main(int argc, char **argv)
        /* check for a character on the serial port */
        if(FD_ISSET(sport->fd, &read_fdset)) {
             read_count = serial_read(sport, serial_buf, 0);
+            LOG("TTY has data, %d bytes", read_count);
             if (read_count < 0) {
                 /* the serial port died, get out */
                 log_die_with_system_message("serial port read failed");
@@ -156,7 +199,7 @@ int main(int argc, char **argv)
        } 
     }
 
-    fprintf(stdout, "closing up shop\n");
+    LOG("closing up shop");
     if(sock->server_fd) {
         close(sock->server_fd);
     }

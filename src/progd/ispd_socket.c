@@ -16,6 +16,13 @@
 #include "server_p.h"
 #include "log.h"
 
+#define DEBUG
+#ifdef DEBUG
+#define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
+#else
+#define LOG(format, ...)
+#endif
+
 static int create_unix_socket(const char*);
 static int create_tcp_socket(unsigned short);
 static void *get_in_addr(struct sockaddr *);

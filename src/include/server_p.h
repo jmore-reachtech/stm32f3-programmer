@@ -20,6 +20,16 @@
 
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
+#define CMD_SIZE 3
+
+typedef enum {
+    MS,
+    MV,
+    MU,
+    MG,
+    IV,
+} ispd_cmd_t;
+
 int ispd_socket_init(unsigned short port, int *addr_family,
     const char *socket_path);
 int ispd_socket_accept(int sfd, int addr_family);
