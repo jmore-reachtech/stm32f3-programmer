@@ -121,8 +121,6 @@ int ispd_socket_accept(int sfd, int addr_family)
     struct sockaddr_storage client_addr;
     char s[INET6_ADDRSTRLEN];
 
-    fprintf(stdout, "addr family %d\n", addr_family);
-
     sin_size = sizeof(client_addr);
     cfd = accept(sfd, (struct sockaddr*)&client_addr, &sin_size);
     
@@ -133,6 +131,7 @@ int ispd_socket_accept(int sfd, int addr_family)
         switch (addr_family) {
         case AF_UNIX:
             log_msg(LOG_INFO, "[ISPD] Handling Unix client\n");
+            fprintf(stdout, "[ISPD] Handling Unix client\n");
             break;
 
         case AF_INET:
@@ -155,4 +154,27 @@ static void *get_in_addr(struct sockaddr *sa)
     }
 
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+int ispd_socket_read(int sfd, char *msg, size_t buf_size)
+{
+    int cnt;
+
+    if ((cnt = recv(sfd, msg, buf_size, 0)) <= 0) {
+        return -1;
+    } else {
+        msg[cnt] = '\0';
+    }
+
+    return cnt;
+}
+
+void ispd_socket_write(int sfd, const char *msg)
+{
+    int cnt = strlen(msg);
+	
+    if (send(sfd, msg, cnt, 0) != cnt) {
+        perror("what's messed up?");
+    }
+
 }

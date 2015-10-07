@@ -24,15 +24,10 @@ struct socket_status {
     char *socket_path;
 };
 
-struct serial_port_status {
-    int fd;
-    struct serial_port_options opts;
-};
-
 static struct isp_status{
     int running;
     struct socket_status sock_status;
-    struct serial_port_status sport_status;
+    struct serial_port_options sport_opts;
 } isp_status = {
     .running = 0,
     .sock_status = {
@@ -42,16 +37,14 @@ static struct isp_status{
         .port           = 0,
         .socket_path    = ISPD_UNIX_SOCKET, 
     },
-    .sport_status = {
-        .fd = 0,
-        .opts = {
-            .device     = TTY_DEV,
-            .baud_rate  = 57600,
-        },
+    .sport_opts = {
+        .fd         = 0,
+        .device     = TTY_DEV,
+        .baud_rate  = 57600,
     },
 };
 
-static int handle_client(int cfd)
+static int say_hello(int cfd)
 {
     printf("server: sending 3 bytes '%s'\n", ISP_ACK);
     if(send(cfd, ISP_ACK, 3 ,0) == -1) {
@@ -71,9 +64,11 @@ int main(int argc, char **argv)
 {
     fd_set cur_fdset; 
     int nfds = 0;
+    /* pointers to nested structures */
     struct isp_status *status = &isp_status;
     struct socket_status *sock = &(isp_status).sock_status;
-    struct serial_port_status *sport = &(isp_status).sport_status;
+    struct serial_port_options *sport = &(isp_status).sport_opts;
+    char serial_buf[MAX_BUF_LEN];
 
     {
         /* install a signal handler to remove the socket file */
@@ -88,7 +83,7 @@ int main(int argc, char **argv)
         }
     }
 
-    if((sport->fd = serial_init(&(sport->opts))) < 0) {
+    if((sport->fd = serial_init(sport)) < 0) {
         log_die_with_system_message("serial init failed");
     }
 
@@ -105,9 +100,11 @@ int main(int argc, char **argv)
 
     status->running = 1;
     while(status->running) {
-        fd_set read_fdset = cur_fdset; 
+        fd_set read_fdset = cur_fdset;
+        int read_count = 0;
+        
+        /* wait indefinitely for someone to blink */
         const int sel = select(nfds+1, &read_fdset, 0, 0, 0);
-        fprintf(stdout,"sel ret %d\n", sel);
 
         if (sel == -1) {
             if (errno == EINTR) {
@@ -119,23 +116,56 @@ int main(int argc, char **argv)
             continue;
         }
 
-        if((sock->client_fd = ispd_socket_accept(sock->server_fd, 
+        /* check for a new connection to accept */
+        if(FD_ISSET(sock->server_fd, &read_fdset)) {
+            if((sock->client_fd = ispd_socket_accept(sock->server_fd, 
                                                     sock->addr_family)) < 0) {
-            log_die_with_system_message("socket accept failed");
+                log_die_with_system_message("socket accept failed");
+            }
+            FD_CLR(sock->server_fd, &cur_fdset);
+            FD_SET(sock->client_fd, &cur_fdset);
+            nfds = MAX(sock->client_fd, sport->fd);
+            say_hello(sock->client_fd);
         }
-    
-        handle_client(sock->client_fd);            
 
-        close(sock->client_fd);
+        /* check for packet received on the client socket */
+        if((sock->client_fd >= 0) && (FD_ISSET(sock->client_fd, &read_fdset))) {
+            char msg_buf[MAX_BUF_LEN];
+            read_count = ispd_socket_read(sock->client_fd, msg_buf,
+                                                    sizeof(msg_buf));
+            if (read_count < 0) {
+                FD_CLR(sock->client_fd, &cur_fdset);
+                FD_SET(sock->server_fd, &cur_fdset);
+                nfds = MAX(sock->server_fd, sport->fd);
+                sock->client_fd = -1;
+            } else if (read_count > 0) {
+                serial_write(sport, msg_buf, read_count);
+            }
+ 
+        }
+ 
+       /* check for a character on the serial port */
+       if(FD_ISSET(sport->fd, &read_fdset)) {
+            read_count = serial_read(sport, serial_buf, 0);
+            if (read_count < 0) {
+                /* the serial port died, get out */
+                log_die_with_system_message("serial port read failed");
+            } else {
+                ispd_socket_write(sock->client_fd, serial_buf);
+            }
+       } 
     }
 
     fprintf(stdout, "closing up shop\n");
     if(sock->server_fd) {
         close(sock->server_fd);
     }
+    if(sock->client_fd) {
+        close(sock->client_fd);
+    }
     
     if(sport->fd) {
-        serial_deinit(&(sport->opts));
+        serial_deinit(sport);
     }
     
     if(sock->port == 0) {

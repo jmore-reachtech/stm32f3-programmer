@@ -16,12 +16,14 @@
 #define ISP_GET_VER "VER"
 
 #define	ISPD_DEFAULT_PORT 7890
-#define ISPD_UNIX_SOCKET "/tmp/ispSocket"
+#define ISPD_UNIX_SOCKET "/tmp/tioSocket"
 
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
 int ispd_socket_init(unsigned short port, int *addr_family,
     const char *socket_path);
 int ispd_socket_accept(int sfd, int addr_family);
+int ispd_socket_read(int sfd, char *msg, size_t buf_size);
+void ispd_socket_write(int sfd, const char *msg);
 
 #endif // _SERVER_H

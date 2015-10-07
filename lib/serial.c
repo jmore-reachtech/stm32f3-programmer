@@ -101,23 +101,38 @@ void serial_deinit(struct serial_port_options *opts)
     opts->fd = 0;
 }
 
-int serial_read(struct serial_port_options *opts, void *buf, size_t nbyte)
+static int serial_read_all(int sfd, void *buf, size_t nbyte)
 {
-	ssize_t r;
+   	ssize_t r;
 	uint8_t *pos = (uint8_t *)buf;
+    int b_read = nbyte;
 
 	LOG("%s: reading %d bytes", __func__, nbyte);
-	while (nbyte) {
-		r = read(opts->fd, pos, nbyte);
-		if (r == 0)
-			return 1;
-		if (r < 0)
-			return 1;
+	while (b_read) {
+		r = read(sfd, pos, b_read);
+        /* incomplete read */
+		if (r <= 0)
+			return b_read;
 
-		nbyte -= r;
+		b_read -= r;
 		pos += r;
 	}
-	return 0;
+    
+    /* we got here so b_read == nbyte, all good*/
+	return nbyte; 
+}
+
+int serial_read(struct serial_port_options *opts, void *buf, size_t nbyte)
+{
+    int b_read;
+
+    if(nbyte > 0) {
+        b_read = serial_read_all(opts->fd, buf, nbyte);
+    } else {
+        b_read = read(opts->fd, buf, SERIAL_BUF_MAX);
+    }
+
+    return b_read;
 }
 
 int serial_write(struct serial_port_options *opts, void *buf, size_t nbyte)

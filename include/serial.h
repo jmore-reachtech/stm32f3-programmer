@@ -2,6 +2,7 @@
 #define _SERIAL_H
 
 #define TTY_DEV "/dev/ttymxc4"
+#define SERIAL_BUF_MAX 512
 
 struct serial_port_options {
     int fd;
