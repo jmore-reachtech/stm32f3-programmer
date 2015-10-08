@@ -24,6 +24,13 @@
 #define CMD_EOL 0xA
 
 typedef enum {
+    MSG_READY = 0,
+    MSG_BUSY,
+    MSG_IDLE,
+    MSG_UPDATING,
+} ispd_notify_t;
+
+typedef enum {
     MS,
     MV,
     MU,

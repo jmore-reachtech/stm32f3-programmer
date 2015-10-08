@@ -27,7 +27,9 @@ static void handle_cmd(ispd_cmd_t cmd);
 static void reset_micro(pin_state s);
 static void micro_init(void);
 static void micro_deinit(void);
-static int say_hello(int cfd);
+static void cmd_version(void);
+static int cmd_update(void);
+static void ispd_notify_client(ispd_notify_t msg);
 
 struct socket_status {
     int server_fd;
@@ -38,8 +40,11 @@ struct socket_status {
 };
 
 struct micro_status {
-    stm32_state_t micro_state; 
-    int ver;
+    stm32_state_t micro_state;
+    char *fw_path;
+    int ver_major;
+    int ver_minor;
+    int ver_patch;
 };
 
 static struct isp_status{
@@ -63,8 +68,18 @@ static struct isp_status{
     },
     .m_status = {
         .micro_state    = STM32_IDLE,
-        .ver            = 0,
+        .fw_path        = "/home/root/main.bin",
+        .ver_major      = 0,
+        .ver_minor      = 0,
+        .ver_patch      = 0,
     },
+};
+
+const char *messages[] = {
+    "txtStatus.text=Ready\n",
+    "txtStatus.text=Busy\n",
+    "txtStatus.text=Idle\n",
+    "txtStatus.text=Updating\n",
 };
 
 static void process_cmd(char *buf)
@@ -103,6 +118,10 @@ static void handle_cmd(ispd_cmd_t cmd)
         case MS:
             micro_init();
             break;
+        case MV:
+            cmd_version();
+        case MU:
+            cmd_update();
         default:
             return;
     }
@@ -110,7 +129,7 @@ static void handle_cmd(ispd_cmd_t cmd)
 
 static void reset_micro(pin_state s)
 {
-    LOG("%s", __func__);
+    LOG("%s %d", __func__, s);
 	gpio_toggle_boot(s);
 	sleep(1);
 	gpio_toggle_reset(LOW);
@@ -141,16 +160,86 @@ static void micro_deinit(void)
     isp_status.m_status.micro_state = STM32_IDLE;
 }
 
-static int say_hello(int cfd)
+static void cmd_version(void)
 {
-    const char *msg = "micro_input.text=1\n";
+	uint8_t data[4] = {0};
+	uint32_t addr = 0x0;
 
-    LOG("server: sending %d bytes", strlen(msg));
-    if(send(cfd, msg, strlen(msg) ,0) == -1) {
-        perror("send");
+    LOG("%s", __func__);
+	if((stm_read_mem(&(isp_status).sport_opts, USER_DATA_OFFSET, data, 4)) != 0) {
+        isp_status.m_status.micro_state = STM32_FAILED;
+        goto err;
     }
 
-    return 0;
+	addr = data[3] << 24 | data[2] << 16 | data[1] << 8 | data[0] << 0;
+    
+    LOG("%d.%d.%d \n", VERSION_MAJOR(addr), VERSION_MINOR(addr), 
+        VERSION_PATCH(addr));
+    
+    isp_status.m_status.ver_major = VERSION_MAJOR(addr);
+    isp_status.m_status.ver_minor = VERSION_MINOR(addr);
+    isp_status.m_status.ver_patch = VERSION_PATCH(addr);
+
+    ispd_socket_write(isp_status.sock_status.client_fd, "micro_input.text=1.0.0\n");
+
+err:
+    return;
+}
+
+static int cmd_update(void)
+{
+	FILE *fp;
+	ssize_t r;
+	long size;
+	uint8_t tmp[MAX_RW_SIZE];
+	uint32_t addr = STM_FLASH_BASE;
+	unsigned int i;
+    unsigned int num_ops, scale;
+    int ret;
+
+    LOG("%s", __func__);
+    
+    ispd_notify_client(MSG_UPDATING);
+	fp = fopen(isp_status.m_status.fw_path, "rb");
+	if(fp == NULL) {
+		LOG("File '%s' not found!", isp_status.m_status.fw_path);
+		return 1;
+	}
+
+	fseek (fp , 0 , SEEK_END);
+	size = ftell (fp);
+	rewind (fp);
+
+    num_ops = size / MAX_RW_SIZE;
+    scale = num_ops / 100;
+    
+	LOG("%s: file size is %ld; ops = %d\n", __func__, size, num_ops);
+
+	r = fread (tmp,1,MAX_RW_SIZE,fp);
+	while (r > 0) {
+		if(r < MAX_RW_SIZE) {
+			LOG("\n%s: padding buffer, read %d", __func__, r);
+			for(i = r; i < MAX_RW_SIZE; i++) {
+				tmp[i] = 0xFF;
+			}
+		}
+		LOG("\n%s: writing %d bytes to flash", __func__, MAX_RW_SIZE);
+		ret = stm_write_mem(&(isp_status).sport_opts, addr,tmp, MAX_RW_SIZE);
+		addr += r;
+
+		r = fread (tmp,1,MAX_RW_SIZE,fp);
+	}
+
+	fclose (fp);
+	
+    ispd_notify_client(MSG_READY);
+	return 0;
+}
+
+static void ispd_notify_client(ispd_notify_t msg)
+{
+    ispd_socket_write(isp_status.sock_status.client_fd, 
+        messages[MSG_READY]);
 }
 
 void ispd_sig_handler(int sig)
@@ -228,7 +317,7 @@ int main(int argc, char **argv)
             FD_SET(sock->client_fd, &cur_fdset);
             nfds = MAX(sock->client_fd, sport->fd);
             LOG("New connection, say Hello");
-            say_hello(sock->client_fd);
+            ispd_notify_client(MSG_IDLE);
         }
 
         /* check for packet received on the client socket */
