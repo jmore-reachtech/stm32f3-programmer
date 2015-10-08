@@ -21,6 +21,7 @@
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
 #define CMD_SIZE 3
+#define CMD_EOL 0xA
 
 typedef enum {
     MS,

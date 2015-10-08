@@ -110,6 +110,7 @@ static int update_firmware(char *path)
 	uint8_t tmp[MAX_RW_SIZE];
 	uint32_t addr = STM_FLASH_BASE;
 	unsigned int i, num_ops, scale;
+    int ret;
 
 	fp = fopen(path, "rb");
 	if(fp == NULL) {
@@ -135,10 +136,8 @@ static int update_firmware(char *path)
 			}
 		}
 		LOG("\n%s: writing %d bytes to flash", __func__, MAX_RW_SIZE);
-		stm_write_mem(&(work).sport, addr,tmp,MAX_RW_SIZE);
+		ret = stm_write_mem(&(work).sport, addr,tmp,MAX_RW_SIZE);
 		addr += r;
-
-        fprintf(stdout, "%d \n", (num_ops-- / scale));
 
 		r = fread (tmp,1,MAX_RW_SIZE,fp);
 	}

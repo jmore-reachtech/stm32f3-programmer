@@ -22,6 +22,13 @@
 #define LOG(format, ...)
 #endif
 
+static void process_cmd(char *buf);
+static void handle_cmd(ispd_cmd_t cmd);
+static void reset_micro(pin_state s);
+static void micro_init(void);
+static void micro_deinit(void);
+static int say_hello(int cfd);
+
 struct socket_status {
     int server_fd;
     int client_fd;
@@ -30,12 +37,18 @@ struct socket_status {
     char *socket_path;
 };
 
+struct micro_status {
+    stm32_state_t micro_state; 
+    int ver;
+};
+
 static struct isp_status{
     int running;
     struct socket_status sock_status;
     struct serial_port_options sport_opts;
+    struct micro_status m_status;
 } isp_status = {
-    .running = 0,
+    .running        = 0,
     .sock_status = {
         .server_fd      = 0,
         .client_fd      = 0,
@@ -47,6 +60,10 @@ static struct isp_status{
         .fd         = 0,
         .device     = TTY_DEV,
         .baud_rate  = 57600,
+    },
+    .m_status = {
+        .micro_state    = STM32_IDLE,
+        .ver            = 0,
     },
 };
 
@@ -75,6 +92,53 @@ static void process_cmd(char *buf)
             LOG("Invalid cmd");
             cmd = IV;
     }
+
+    handle_cmd(cmd);
+}
+
+static void handle_cmd(ispd_cmd_t cmd)
+{
+    LOG("%s", __func__);
+    switch(cmd) {
+        case MS:
+            micro_init();
+            break;
+        default:
+            return;
+    }
+}
+
+static void reset_micro(pin_state s)
+{
+    LOG("%s", __func__);
+	gpio_toggle_boot(s);
+	sleep(1);
+	gpio_toggle_reset(LOW);
+	sleep(1);
+	gpio_toggle_reset(HIGH);
+	sleep(1);
+}
+
+static void micro_init(void)
+{
+    LOG("%s", __func__);
+    gpio_init();
+	reset_micro(HIGH);
+
+	if(stm_init_seq(&(isp_status.sport_opts)) != 0) {
+        isp_status.m_status.micro_state = STM32_FAILED;
+    }
+
+    LOG("STM32_READY");
+    isp_status.m_status.micro_state = STM32_READY;
+}
+
+static void micro_deinit(void)
+{
+    LOG("%s", __func__);
+	reset_micro(LOW);
+	gpio_deinit();
+    isp_status.m_status.micro_state = STM32_IDLE;
 }
 
 static int say_hello(int cfd)
@@ -103,6 +167,7 @@ int main(int argc, char **argv)
     struct isp_status *status = &isp_status;
     struct socket_status *sock = &(isp_status).sock_status;
     struct serial_port_options *sport = &(isp_status).sport_opts;
+    struct micro_status *micro = &(isp_status).m_status;
     char serial_buf[MAX_BUF_LEN];
 
     {
@@ -179,7 +244,7 @@ int main(int argc, char **argv)
                 sock->client_fd = -1;
             } else if (read_count > 0) {
                 LOG("Client socket has data, %d bytes", read_count);
-                if(read_count == CMD_SIZE && msg_buf[CMD_SIZE-1] == 0xA) {
+                if(read_count == CMD_SIZE && msg_buf[CMD_SIZE-1] == CMD_EOL) {
                     process_cmd(msg_buf);
                 }
             }
@@ -200,6 +265,10 @@ int main(int argc, char **argv)
     }
 
     LOG("closing up shop");
+    if(micro->micro_state == STM32_READY) {
+        micro_deinit();
+    }    
+
     if(sock->server_fd) {
         close(sock->server_fd);
     }
