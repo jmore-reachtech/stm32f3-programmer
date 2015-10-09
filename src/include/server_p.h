@@ -28,6 +28,7 @@ typedef enum {
     MSG_BUSY,
     MSG_IDLE,
     MSG_UPDATING,
+    MSG_COMPLETE
 } ispd_notify_t;
 
 typedef enum {
@@ -35,6 +36,7 @@ typedef enum {
     MV,
     MU,
     MG,
+    MQ,
     IV,
 } ispd_cmd_t;
 

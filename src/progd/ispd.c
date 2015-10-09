@@ -30,6 +30,7 @@ static void micro_deinit(void);
 static void cmd_version(void);
 static int cmd_update(void);
 static void ispd_notify_client(ispd_notify_t msg);
+static void cmd_quit(void);
 
 struct socket_status {
     int server_fd;
@@ -80,6 +81,7 @@ const char *messages[] = {
     "txtStatus.text=Busy\n",
     "txtStatus.text=Idle\n",
     "txtStatus.text=Updating\n",
+    "txtStatus.text=Complete\n",
 };
 
 static void process_cmd(char *buf)
@@ -103,6 +105,10 @@ static void process_cmd(char *buf)
             LOG("Go cmd");
             cmd = MG;
             break;
+        case 'Q':
+            LOG("Quit cmd");
+            cmd = MQ;
+            break;
         default:
             LOG("Invalid cmd");
             cmd = IV;
@@ -120,8 +126,13 @@ static void handle_cmd(ispd_cmd_t cmd)
             break;
         case MV:
             cmd_version();
+            break;
         case MU:
             cmd_update();
+            break;
+        case MQ:
+            cmd_quit();
+            break;
         default:
             return;
     }
@@ -158,6 +169,15 @@ static void micro_deinit(void)
 	reset_micro(LOW);
 	gpio_deinit();
     isp_status.m_status.micro_state = STM32_IDLE;
+}
+
+static void cmd_quit(void)
+{
+    LOG("%s", __func__);
+    micro_deinit();
+    isp_status.m_status.micro_state = STM32_IDLE;
+    isp_status.running = 0;
+    ispd_notify_client(MSG_IDLE);
 }
 
 static void cmd_version(void)
@@ -232,14 +252,14 @@ static int cmd_update(void)
 
 	fclose (fp);
 	
-    ispd_notify_client(MSG_READY);
+    ispd_notify_client(MSG_COMPLETE);
 	return 0;
 }
 
 static void ispd_notify_client(ispd_notify_t msg)
 {
     ispd_socket_write(isp_status.sock_status.client_fd, 
-        messages[MSG_READY]);
+        messages[msg]);
 }
 
 void ispd_sig_handler(int sig)
@@ -317,7 +337,7 @@ int main(int argc, char **argv)
             FD_SET(sock->client_fd, &cur_fdset);
             nfds = MAX(sock->client_fd, sport->fd);
             LOG("New connection, say Hello");
-            ispd_notify_client(MSG_IDLE);
+            ispd_notify_client(MSG_READY);
         }
 
         /* check for packet received on the client socket */
@@ -356,11 +376,12 @@ int main(int argc, char **argv)
     LOG("closing up shop");
     if(micro->micro_state == STM32_READY) {
         micro_deinit();
-    }    
+    }
 
     if(sock->server_fd) {
         close(sock->server_fd);
     }
+
     if(sock->client_fd) {
         close(sock->client_fd);
     }
