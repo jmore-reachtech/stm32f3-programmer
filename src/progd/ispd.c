@@ -214,8 +214,9 @@ static int cmd_update(void)
 	uint8_t tmp[MAX_RW_SIZE];
 	uint32_t addr = STM_FLASH_BASE;
 	unsigned int i;
-    unsigned int num_ops, scale;
+    unsigned int num_ops;
     int ret;
+    char msg[32];
 
     LOG("%s", __func__);
     
@@ -231,7 +232,6 @@ static int cmd_update(void)
 	rewind (fp);
 
     num_ops = size / MAX_RW_SIZE;
-    scale = num_ops / 100;
     
 	LOG("%s: file size is %ld; ops = %d\n", __func__, size, num_ops);
 
@@ -246,6 +246,9 @@ static int cmd_update(void)
 		LOG("\n%s: writing %d bytes to flash", __func__, MAX_RW_SIZE);
 		ret = stm_write_mem(&(isp_status).sport_opts, addr,tmp, MAX_RW_SIZE);
 		addr += r;
+
+        sprintf(msg,"txtStatus.text=%d\n", num_ops--);
+        ispd_socket_write(isp_status.sock_status.client_fd, msg);
 
 		r = fread (tmp,1,MAX_RW_SIZE,fp);
 	}
