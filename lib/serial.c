@@ -198,7 +198,7 @@ uint32_t serial_baud_str_to_key(const char *baud_str)
 
     if (x >= NELEM(BaudTable))
     {
-        LOG("Warning: Unknown baud rate '%s'. Defaulting to %s", baud_str, baud_key_to_str(baud_key));
+        LOG("Warning: Unknown baud rate '%s'. Defaulting to %s", baud_str, serial_baud_key_to_str(baud_key));
     }
 
     if (baud_buf != NULL)

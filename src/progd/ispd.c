@@ -15,7 +15,6 @@
 #include "gpio.h"
 #include "stm32.h"
 
-#define DEBUG
 #ifdef DEBUG
 #define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
 #else
@@ -152,7 +151,9 @@ static void reset_micro(pin_state s)
 static void micro_init(void)
 {
     LOG("%s", __func__);
-    gpio_init();
+	if(gpio_init() != 0) {
+	    LOG("gpio init failed!");
+	}
 	reset_micro(HIGH);
 
 	if(stm_init_seq(&(isp_status.sport_opts)) != 0) {
@@ -223,8 +224,6 @@ static int cmd_update(void)
     int ret;
     char msg[32];
 
-    LOG("%s", __func__);
-    
     ispd_notify_client(MSG_UPDATING);
 	fp = fopen(isp_status.m_status.fw_path, "rb");
 	if(fp == NULL) {
@@ -238,7 +237,14 @@ static int cmd_update(void)
 
     num_ops = size / MAX_RW_SIZE;
     
-	LOG("%s: file size is %ld; ops = %d\n", __func__, size, num_ops);
+	LOG("%s: file size is %ld; ops = %d. fw = %s\n", __func__,
+            size,
+            num_ops,
+            isp_status.m_status.fw_path);
+
+	if(stm_erase_mem(&(isp_status).sport_opts) != 0) {
+        return 1;
+	}
 
 	r = fread (tmp,1,MAX_RW_SIZE,fp);
 	while (r > 0) {
@@ -285,7 +291,6 @@ int main(int argc, char **argv)
     struct socket_status *sock = &(isp_status).sock_status;
     struct serial_port_options *sport = &(isp_status).sport_opts;
     struct micro_status *micro = &(isp_status).m_status;
-    char serial_buf[MAX_BUF_LEN];
 
     {
         /* install a signal handler to remove the socket file */
@@ -311,8 +316,7 @@ int main(int argc, char **argv)
     
     FD_ZERO(&cur_fdset);
     FD_SET(sock->server_fd, &cur_fdset);
-    FD_SET(sport->fd, &cur_fdset);
-    
+
     nfds = MAX(sock->server_fd, sport->fd);
 
     status->running = 1;
@@ -367,18 +371,6 @@ int main(int argc, char **argv)
             }
  
         }
- 
-       /* check for a character on the serial port */
-       if(FD_ISSET(sport->fd, &read_fdset)) {
-            read_count = serial_read(sport, serial_buf, 0);
-            LOG("TTY has data, %d bytes", read_count);
-            if (read_count < 0) {
-                /* the serial port died, get out */
-                log_die_with_system_message("serial port read failed");
-            } else {
-                ispd_socket_write(sock->client_fd, serial_buf);
-            }
-       } 
     }
 
     LOG("closing up shop");

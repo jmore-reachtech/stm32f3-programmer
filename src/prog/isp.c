@@ -124,7 +124,8 @@ static int update_firmware(char *path)
 
     num_ops = size / MAX_RW_SIZE;
 
-	LOG("%s: file size is %ld; ops = %d\n", __func__, size, num_ops);
+	LOG("%s: file size is %ld; ops = %d, fw = %s\n", __func__,
+            size, num_ops, path);
 
 	r = fread (tmp,1,MAX_RW_SIZE,fp);
 	while (r > 0) {
