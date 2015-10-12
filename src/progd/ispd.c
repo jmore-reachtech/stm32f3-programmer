@@ -184,6 +184,7 @@ static void cmd_version(void)
 {
 	uint8_t data[4] = {0};
 	uint32_t addr = 0x0;
+    char ver[32];
 
     LOG("%s", __func__);
 	if((stm_read_mem(&(isp_status).sport_opts, USER_DATA_OFFSET, data, 4)) != 0) {
@@ -200,7 +201,11 @@ static void cmd_version(void)
     isp_status.m_status.ver_minor = VERSION_MINOR(addr);
     isp_status.m_status.ver_patch = VERSION_PATCH(addr);
 
-    ispd_socket_write(isp_status.sock_status.client_fd, "micro_input.text=1.0.0\n");
+    sprintf(ver,"micro_input.text=%d.%d.%d\n", 
+            isp_status.m_status.ver_major,
+            isp_status.m_status.ver_minor,
+            isp_status.m_status.ver_patch);
+    ispd_socket_write(isp_status.sock_status.client_fd, ver);
 
 err:
     return;

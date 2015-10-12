@@ -1,7 +1,7 @@
 #ifndef _COMMON_H
 #define _COMMON_H
 
-#define USER_DATA_OFFSET  0x0803F800
+#define USER_DATA_OFFSET  0x08000188
 
 #define APP_VERSION     0x00001200
 
