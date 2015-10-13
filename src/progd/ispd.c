@@ -15,6 +15,8 @@
 #include "gpio.h"
 #include "stm32.h"
 
+/* Uncomment for full debugging */
+//#define DEBUG
 #ifdef DEBUG
 #define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
 #else
@@ -31,6 +33,9 @@ static int cmd_update(void);
 static void ispd_notify_client(ispd_notify_t msg);
 static void cmd_quit(void);
 
+/* 
+    Structure for socket info 
+*/
 struct socket_status {
     int server_fd;
     int client_fd;
@@ -39,6 +44,9 @@ struct socket_status {
     char *socket_path;
 };
 
+/*
+    Structure for STM32 info
+*/
 struct micro_status {
     stm32_state_t micro_state;
     char *fw_path;
@@ -47,6 +55,9 @@ struct micro_status {
     int ver_patch;
 };
 
+/*
+    Structure for current work state
+*/
 static struct isp_status{
     int running;
     struct socket_status sock_status;
@@ -75,6 +86,10 @@ static struct isp_status{
     },
 };
 
+/*
+    These messages map to Qml item object names. We use these 
+    to set the current status.
+*/
 const char *messages[] = {
     "txtStatus.text=Ready\n",
     "txtStatus.text=Busy\n",
@@ -83,6 +98,11 @@ const char *messages[] = {
     "txtStatus.text=Complete\n",
 };
 
+/*
+    We use a simple command scheme. Qml sends us 3 bytes 'MV\n'.
+    We only care about the second byte to know what to do. Here
+    we look for a valid command and if found handle it.
+*/
 static void process_cmd(char *buf)
 {
     ispd_cmd_t cmd = IV;
@@ -116,6 +136,9 @@ static void process_cmd(char *buf)
     handle_cmd(cmd);
 }
 
+/*
+    Here we handle a valid command.
+*/
 static void handle_cmd(ispd_cmd_t cmd)
 {
     LOG("%s", __func__);
@@ -137,6 +160,11 @@ static void handle_cmd(ispd_cmd_t cmd)
     }
 }
 
+/* 
+    Reset the STM32. To put the STM32 in reset pull the boot pin high, 
+    and toggle the reset pin. This will bring the STM32 up in bootloader mode.
+    To return the STM32 to normal, pull the boot pin low and toggle the reset pin.
+*/
 static void reset_micro(pin_state s)
 {
     LOG("%s %d", __func__, s);
@@ -148,6 +176,10 @@ static void reset_micro(pin_state s)
 	sleep(1);
 }
 
+/* 
+    Set up the STM32 in bootloader mode. Here we init the GPIO port 
+    and send the STM32 an init byte. 
+*/
 static void micro_init(void)
 {
     LOG("%s", __func__);
@@ -164,6 +196,9 @@ static void micro_init(void)
     isp_status.m_status.micro_state = STM32_READY;
 }
 
+/* 
+    Reset the STM32 to normal running state and reset the GPIO.
+*/
 static void micro_deinit(void)
 {
     LOG("%s", __func__);
@@ -172,6 +207,11 @@ static void micro_deinit(void)
     isp_status.m_status.micro_state = STM32_IDLE;
 }
 
+/*
+    Quit command, Qml is done talking to the STM32 so reset the micro
+    and GPIO. We also clear the running flag and send an IDLE status 
+    message to Qml.
+*/
 static void cmd_quit(void)
 {
     LOG("%s", __func__);
@@ -181,6 +221,10 @@ static void cmd_quit(void)
     ispd_notify_client(MSG_IDLE);
 }
 
+/*
+    Version command, read the application version from the STM32 and 
+    notify Qml.
+*/
 static void cmd_version(void)
 {
 	uint8_t data[4] = {0};
@@ -202,6 +246,7 @@ static void cmd_version(void)
     isp_status.m_status.ver_minor = VERSION_MINOR(addr);
     isp_status.m_status.ver_patch = VERSION_PATCH(addr);
 
+    /* This message goes to Qml to display the version  */
     sprintf(ver,"micro_input.text=%d.%d.%d\n", 
             isp_status.m_status.ver_major,
             isp_status.m_status.ver_minor,
@@ -212,6 +257,12 @@ err:
     return;
 }
 
+/* 
+    Update command, update the firmware on the STM32. This reads a file 
+    from the filesystem and writes it to the STM32. The STM32 accepts 
+    256 bytes for each write so we divide the file size by 256 to give 
+    us an ops count and use this to notify Qml of the progress.
+*/
 static int cmd_update(void)
 {
 	FILE *fp;
@@ -224,6 +275,7 @@ static int cmd_update(void)
     int ret;
     char msg[32];
 
+    /* Notify Qml we are updating */
     ispd_notify_client(MSG_UPDATING);
 	fp = fopen(isp_status.m_status.fw_path, "rb");
 	if(fp == NULL) {
@@ -235,6 +287,7 @@ static int cmd_update(void)
 	size = ftell (fp);
 	rewind (fp);
 
+    /* How many 256 byte chunks we have */
     num_ops = size / MAX_RW_SIZE;
     
 	LOG("%s: file size is %ld; ops = %d. fw = %s\n", __func__,
@@ -242,6 +295,7 @@ static int cmd_update(void)
             num_ops,
             isp_status.m_status.fw_path);
 
+    /* Need to erase before we update */
 	if(stm_erase_mem(&(isp_status).sport_opts) != 0) {
         return 1;
 	}
@@ -258,6 +312,7 @@ static int cmd_update(void)
 		ret = stm_write_mem(&(isp_status).sport_opts, addr,tmp, MAX_RW_SIZE);
 		addr += r;
 
+        /* Update the Qml status element */
         sprintf(msg,"txtStatus.text=%d\n", num_ops--);
         ispd_socket_write(isp_status.sock_status.client_fd, msg);
 
@@ -266,27 +321,38 @@ static int cmd_update(void)
 
 	fclose (fp);
 	
+    /* Notify Qml the update is complete */
     ispd_notify_client(MSG_COMPLETE);
 	return 0;
 }
 
+/*
+    Helper function to send a message to Qml
+*/
 static void ispd_notify_client(ispd_notify_t msg)
 {
     ispd_socket_write(isp_status.sock_status.client_fd, 
         messages[msg]);
 }
 
+/*
+    Signal handler for SIGINT and SIGTERM. Clear the running flag, 
+    this allows the main processing loop to fall through.
+*/
 void ispd_sig_handler(int sig)
 {
     LOG("got sig TERM");
     isp_status.running = 0;
 }
 
+/*
+    Application entry point
+*/
 int main(int argc, char **argv)
 {
     fd_set cur_fdset; 
     int nfds = 0;
-    /* pointers to nested structures */
+    /* pointers to nested structures, for ease of access */
     struct isp_status *status = &isp_status;
     struct socket_status *sock = &(isp_status).sock_status;
     struct serial_port_options *sport = &(isp_status).sport_opts;
@@ -305,20 +371,28 @@ int main(int argc, char **argv)
         }
     }
 
+    /* Init the serial port */
     if((sport->fd = serial_init(sport)) < 0) {
         log_die_with_system_message("serial init failed");
     }
 
+    /* Expose a server socket for Qml */
     if((sock->server_fd = ispd_socket_init(0, &(sock->addr_family),  
                                             sock->socket_path)) < 0) {
         log_die_with_system_message("socket init failed");
     }
-    
+
+    /* 
+        We really don't need a select set but set one up anyway, we may use it 
+        down the road. 
+    */
     FD_ZERO(&cur_fdset);
     FD_SET(sock->server_fd, &cur_fdset);
 
+    /* We need the highest file descriptor for the select call */
     nfds = MAX(sock->server_fd, sport->fd);
 
+    /* set our running flag */
     status->running = 1;
     while(status->running) {
         fd_set read_fdset = cur_fdset;
@@ -345,10 +419,13 @@ int main(int argc, char **argv)
                                                     sock->addr_family)) < 0) {
                 log_die_with_system_message("socket accept failed");
             }
+            /* We have a new client connection, clear the server fd from
+                the select set and add the client fd */
             FD_CLR(sock->server_fd, &cur_fdset);
             FD_SET(sock->client_fd, &cur_fdset);
             nfds = MAX(sock->client_fd, sport->fd);
             LOG("New connection, say Hello");
+            /* Notify Qml we are here and ready to go */
             ispd_notify_client(MSG_READY);
         }
 
@@ -359,13 +436,20 @@ int main(int argc, char **argv)
                                                     sizeof(msg_buf));
             if (read_count < 0) {
                 LOG("Client closed socket");
+                /* The client is gone. Clear that fd from the select set 
+                    and add back the server fd so we can listen for a new
+                    connection. We may want to see what state the STM32 is in
+                    and react accordingly */
                 FD_CLR(sock->client_fd, &cur_fdset);
                 FD_SET(sock->server_fd, &cur_fdset);
                 nfds = MAX(sock->server_fd, sport->fd);
                 sock->client_fd = -1;
             } else if (read_count > 0) {
                 LOG("Client socket has data, %d bytes", read_count);
+                /* A valid command from QMl is 3 bytes with the last byte being
+                    a newline (0xA). */
                 if(read_count == CMD_SIZE && msg_buf[CMD_SIZE-1] == CMD_EOL) {
+                    /* We have a valid command, process it */
                     process_cmd(msg_buf);
                 }
             }
@@ -373,6 +457,7 @@ int main(int argc, char **argv)
         }
     }
 
+    /* We are going down, clean up! */
     LOG("closing up shop");
     if(micro->micro_state == STM32_READY) {
         micro_deinit();
@@ -390,6 +475,8 @@ int main(int argc, char **argv)
         serial_deinit(sport);
     }
     
+    /* We are using the same unix socket name as the TIO Agent! Make 
+        sure we remove the file so the TIO Agent can start */
     if(sock->port == 0) {
         /* best effort removal of socket */
         const int rv = unlink(sock->socket_path);

@@ -12,6 +12,8 @@
 #include "gpio.h"
 #include "stm32.h"
 
+/* Uncomment for full debugging */
+//#define DEBUG
 #ifdef DEBUG
 #define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
 #else
@@ -27,6 +29,9 @@ static void query_action(void);
 static void go_action(void);
 static void run_task(void);
 
+/* 
+    Structure to hold options and state 
+*/
 struct {
 	work_action task;
 	task_state_t task_state;
@@ -41,7 +46,7 @@ struct {
 	.task_state = TASK_IDLE,
 	.micro_state = STM32_IDLE,
 	.reset = 1,
-	.filename = "main.bin",
+	.filename = "/home/root/main.bin",
 	.addr = USER_DATA_OFFSET,
 	.ver_check = UNCHECKED,
 	.sport = {
@@ -51,6 +56,11 @@ struct {
 	},
 };
 
+/* 
+    Reset the STM32. To put the STM32 in reset pull the boot pin high, 
+    and toggle the reset pin. This will bring the STM32 up in bootloader mode.
+    To return the STM32 to normal, pull the boot pin low and toggle the reset pin.
+*/
 static void reset_micro(pin_state s)
 {
 	LOG("%s: ", __func__);
@@ -63,6 +73,10 @@ static void reset_micro(pin_state s)
 	sleep(1);
 }
 
+/* 
+    Set up the STM32 in bootloader mode. Here we init the serial port, 
+    GPIO port and send the STM32 an init byte. 
+*/
 static void micro_init(void)
 {
    	if(work.reset) {
@@ -83,6 +97,10 @@ static void micro_init(void)
 	work.micro_state = STM32_READY;
 }
 
+/* 
+    Reset the STM32 to normal running state, reset the GPIO and serial 
+    port.
+*/
 static void micro_deinit(void)
 {
    if(work.reset) {
@@ -92,6 +110,10 @@ static void micro_deinit(void)
 	serial_deinit(&(work).sport);
 }
 
+/* 
+    Our signal handler. We listen for SIGTERM and SIGINT (Ctrl-C). Here 
+    we reset the STM32 and close up the GPIO and serial port 
+*/
 static void sig_handler(int sig, siginfo_t *siginfo, void *context)
 {
 	if(work.reset) {
@@ -102,6 +124,12 @@ static void sig_handler(int sig, siginfo_t *siginfo, void *context)
 	serial_deinit(&(work).sport);
 }
 
+/* 
+    Update the firmware on the STM32. This reads a file from the filesystem 
+    and writes it to the STM32. The STM32 accepts 256 bytes for each write so
+    we divide the file size by 256 to give us an ops count and use this to 
+    notify the client of progress.
+*/
 static int update_firmware(char *path)
 {
 	FILE *fp;
@@ -122,6 +150,7 @@ static int update_firmware(char *path)
 	size = ftell (fp);
 	rewind (fp);
 
+    /* How many 256 byte chunks we have */
     num_ops = size / MAX_RW_SIZE;
 
 	LOG("%s: file size is %ld; ops = %d, fw = %s\n", __func__,
@@ -129,6 +158,7 @@ static int update_firmware(char *path)
 
 	r = fread (tmp,1,MAX_RW_SIZE,fp);
 	while (r > 0) {
+        /* We need to pad reads that are smaller than 256 bytes */
 		if(r < MAX_RW_SIZE) {
 			LOG("\n%s: padding buffer, read %d", __func__, r);
 			for(i = r; i < MAX_RW_SIZE; i++) {
@@ -139,6 +169,7 @@ static int update_firmware(char *path)
 		ret = stm_write_mem(&(work).sport, addr,tmp,MAX_RW_SIZE);
 		addr += r;
 
+        /* Write progress to stdout */
         fprintf(stdout,"%d\n", num_ops--);
 
 		r = fread (tmp,1,MAX_RW_SIZE,fp);
@@ -149,12 +180,19 @@ static int update_firmware(char *path)
 	return 0;
 }
 
+/* 
+    We can compile in an app version if need be. This is called by the 
+    -v command line option 
+*/
 static void display_version(void)
 {
    fprintf(stdout, "%d.%d.%d \n", VERSION_MAJOR(APP_VERSION),
         VERSION_MINOR(APP_VERSION), VERSION_PATCH(APP_VERSION)); 
 }
 
+/* 
+    Show command line options 
+*/
 static void display_help(char *prog_name)
 {
 	fprintf(stdout, "Usage: %s [options]\n", prog_name);
@@ -179,6 +217,9 @@ static void display_help(char *prog_name)
     fprintf(stdout, "\n");
 }
 
+/*
+    Parse command line args. This sets up the task.
+*/
 static int parse_options(int argc, char *argv[]) 
 {
 	int c;
@@ -244,6 +285,9 @@ static int parse_options(int argc, char *argv[])
 	return 0;
 }
 
+/* 
+    Write task, we are going to program the STM32 
+*/
 static void write_action(void)
 {
 	if(stm_erase_mem(&(work).sport) != 0) {
@@ -257,6 +301,10 @@ err:
 	return;
 }
 
+/* 
+    Query task, read the STM32 application version. The version is stored 
+    at a pre-determined address, USER_DATA_OFFSET.
+*/
 static void query_action(void)
 {
 	uint8_t data[4] = {0};
@@ -283,6 +331,9 @@ err:
 	return;
 }
 
+/*
+    Go task, just to flash base and start executing.
+*/
 static void go_action(void)
 {
 	if(stm_go(&(work).sport, STM_FLASH_BASE) != 0) {
@@ -297,6 +348,9 @@ err:
 	return;
 }
 
+/*
+    In interactive mode read a command from stdin.
+*/
 static void read_command(char *buf, int size)
 {
     int len = 0;
@@ -309,6 +363,9 @@ static void read_command(char *buf, int size)
     }
 }
 
+/*
+    Interactive mode command parser.
+*/
 static int cmd_parser(char *cmd)
 {
     if (strcmp(cmd,"exit") == 0) {
@@ -336,11 +393,20 @@ static int cmd_parser(char *cmd)
     return CMD_UNKNOWN;
 }
 
+/*
+    Interactive mode, display the firmware file that will be used 
+    for the update task.
+*/
 static void interactive_display_status()
 {
     fprintf(stdout, "firmware: %s\n", work.filename);
 }
 
+/*
+    Interactive mode, when we get a firmware command capture 
+    the new firmware path. Users can use this to change what firmware
+    is used for and update.
+*/
 static void interactive_read_firmware()
 {
     char buf[32] = {0};
@@ -357,6 +423,9 @@ static void interactive_read_firmware()
     
 }
 
+/*
+    Interacive mode, display what commands we support.
+*/
 static void interactive_display_help()
 {
     fprintf(stdout, "help \n");
@@ -368,6 +437,10 @@ static void interactive_display_help()
     fprintf(stdout, "exit \n");
 }
 
+/*
+    Interactive mode, this is the main interactive task loop. Here 
+    we accept commands from the user and complete requested actions.
+*/
 static void interactive_action(void)
 {
     char cmd[32] = {0};
@@ -412,12 +485,19 @@ done:
     return;
 }
 
+/* 
+    Read task, we can read the firmware from the STM32 and save to a file.
+    Not implemented.
+*/
 static void read_action(void)
 {
 	LOG("Flash read not implemented");
 	work.task_state = TASK_SUCCESS;
 }
 
+/*
+    After all the IO is setup we run the task here.
+*/
 static void run_task(void)
 {
     switch(work.task) {
@@ -438,6 +518,10 @@ static void run_task(void)
 	}
 }
 
+/*
+    This starts the process to run the task as parsed from the commannd line.
+    Here we setup the STM32 and configure the GPIO and serial port.
+*/
 static int start(void)
 {
 	work.task_state = TASK_START;
@@ -458,6 +542,9 @@ deinit:
 	return work.task_state;
 }
 
+/*
+    Stub for write action.
+*/
 //static void write_file(uint8_t *data, int size)
 //{
 	//FILE *fp;
@@ -470,11 +557,17 @@ deinit:
 	//printf("%s: wrote %d bytes \n", __func__, r);
 //}
 
+/* 
+    Application entry point 
+*/
 int main(int argc, char **argv)
 {
 	struct sigaction sig_act;
 	int ret = 1;
 
+    /* Setup our signal handler. We want to catch SIGINT (Ctrl-C) 
+        and SIGTERM. 
+    */
 	sig_act.sa_sigaction = sig_handler;
 	sig_act.sa_flags = SA_SIGINFO;
 	if (sigaction(SIGTERM, &sig_act, NULL) < 0) {

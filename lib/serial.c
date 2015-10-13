@@ -11,6 +11,8 @@
 
 #include "serial.h"
 
+/* Uncomment for full debugging */
+//#define DEBUG
 #ifdef DEBUG
 #define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
 #else
@@ -58,8 +60,12 @@ const struct {
 
 static void serial_tio_init(struct termios *t);
 
+/* 
+    Setup the termios struct 
+*/
 static void serial_tio_init(struct termios *t)
 {
+    /* We need to be in raw mode */
 	cfmakeraw(t);
     t->c_cflag &= ~(CSIZE | CRTSCTS);
     t->c_cflag &= ~(CSIZE | CRTSCTS);
@@ -72,10 +78,14 @@ static void serial_tio_init(struct termios *t)
     t->c_cc[VTIME] = 5;
 }
 
+/* 
+    Init the serial port 
+*/
 int serial_init(struct serial_port_options *opts)
 {
 	struct termios tio;
 	
+    /* Open the serial port */
 	opts->fd = open(opts->device, O_RDWR | O_NOCTTY);
 	if (opts->fd == -1) {
 		/* Could not open the port. */
@@ -83,6 +93,7 @@ int serial_init(struct serial_port_options *opts)
 		return opts->fd;
 	}
     
+    /* We have a file descriptor so set the serial options and baud rate */
     serial_tio_init(&tio);
     tcflush(opts->fd, TCIFLUSH);
     cfsetospeed(&tio, opts->baud_rate);
@@ -92,6 +103,10 @@ int serial_init(struct serial_port_options *opts)
     return opts->fd;
 }
 
+/* 
+    This cleans up the serial port. We might want to save the old termios and 
+    reset here 
+*/
 void serial_deinit(struct serial_port_options *opts)
 {
 	if(opts->fd) {
@@ -101,6 +116,11 @@ void serial_deinit(struct serial_port_options *opts)
     opts->fd = 0;
 }
 
+/* 
+    Sometimes not all the data is available. This loops until we get the number 
+    of bytes we expect. The number of bytes is based on the STM32 bootloader 
+    protocol. 
+*/
 static int serial_read_all(int sfd, void *buf, size_t nbyte)
 {
    	ssize_t r;
@@ -122,6 +142,11 @@ static int serial_read_all(int sfd, void *buf, size_t nbyte)
 	return nbyte; 
 }
 
+/* 
+    Reads data from the serial port. If nbyte is 0 this is a regular read. If 
+    we are talking to the STM32 bootloader we expect a certain number of bytes on
+    each read. In that case call local serial_read_all() 
+*/
 int serial_read(struct serial_port_options *opts, void *buf, size_t nbyte)
 {
     int b_read;
@@ -135,6 +160,9 @@ int serial_read(struct serial_port_options *opts, void *buf, size_t nbyte)
     return b_read;
 }
 
+/* 
+    Write data to the serial port. 
+*/
 int serial_write(struct serial_port_options *opts, void *buf, size_t nbyte)
 {
 	ssize_t r;
@@ -145,6 +173,9 @@ int serial_write(struct serial_port_options *opts, void *buf, size_t nbyte)
 	return r;
 }
 
+/* 
+    Helper function to convert baud rate to readable string 
+*/
 const char *serial_baud_key_to_str(uint32_t baud_key)
 {
     static char buffer[32] = { 0 };
@@ -172,6 +203,9 @@ const char *serial_baud_key_to_str(uint32_t baud_key)
     return buffer;
 }
 
+/* 
+    Helper function to convert readable baud string to baud rate 
+*/
 uint32_t serial_baud_str_to_key(const char *baud_str)
 {
     uint32_t baud_key = __MAX_BAUD;

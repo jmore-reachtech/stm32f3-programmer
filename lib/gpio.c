@@ -8,6 +8,8 @@
 #include "linux/i2c-dev-user.h"
 #include "gpio.h"
 
+/* Uncomment for full debugging */
+//#define DEBUG
 #ifdef DEBUG
 #define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
 #else
@@ -16,10 +18,15 @@
 
 static int fd = 0;
 
+
+/* 
+    Set up the GPIO for the reset and boot pin on the STM32 
+*/
 int gpio_init(void)
 {
 	int rv = 0;
 	
+    /* Open the i2c device */
 	fd = open(I2C_DEV, O_RDWR);
 	if(fd < 0) {
 		LOG("open %s failed!", I2C_DEV);
@@ -32,11 +39,13 @@ int gpio_init(void)
 		return -ENODEV;
 	}
 	
+    /* Use GPIO 2 and 3, pins 1 and 2 on J22 */
 	rv = i2c_smbus_write_byte_data(fd, I2C_CTRL_REG, 0xF3);
 	if(rv < 0) {
 		perror("smbus ctrl_reg write failed!");
 		return -1;
 	}
+
 	rv = i2c_smbus_write_byte_data(fd, I2C_OUT_REG, 0x08);
 	if(rv < 0) {
 		perror("smbus out_reg write failed!");
@@ -58,13 +67,20 @@ int gpio_init(void)
 	return 0;
 }
 
+
+/* 
+    Reset the GPIO port 
+*/
 void gpio_deinit(void)
 {
 	int rv = 0;
+    
+    /* Set all pins to input */
 	rv = i2c_smbus_write_byte_data(fd, I2C_CTRL_REG, 0xFF);
 	if(rv < 0) {
 		LOG("smbus write failed!");
 	}
+    /* Set all pins to low */
 	rv = i2c_smbus_write_byte_data(fd, I2C_OUT_REG, 0x00);
 	if(rv < 0) {
 		LOG("smbus write failed!");
@@ -75,15 +91,20 @@ void gpio_deinit(void)
 	}
 }
 
+/* 
+    Toggle the boot pin, LOW or HIGH 
+*/
 void gpio_toggle_boot(pin_state p)
 {
 	int rv = 0, reg = 0;
 	
+    /* read the GPIO out reg */
 	reg = i2c_smbus_read_byte_data(fd, I2C_OUT_REG);
 	if(reg < 0) {
 		LOG("smbus read failed!");
 	}
 
+    /* Clear or set the GPIO pin */
 	switch (p) {
 		case LOW:
 			reg &= ~(1 << 2);
@@ -101,14 +122,20 @@ void gpio_toggle_boot(pin_state p)
 	}
 }
 
+/* 
+    Toggle the reset pin, LOW or HIGH 
+*/
 void gpio_toggle_reset(pin_state p)
 {
 	int rv = 0, reg = 0;
+
+    /* read the GPIO out reg */
 	reg = i2c_smbus_read_byte_data(fd, I2C_OUT_REG);
 	if(reg < 0) {
 		LOG("smbus read failed!");
 	}
 
+    /* Clear or set the GPIO pin */
 	switch (p) {
 		case LOW:
 			reg &= ~(1 << 3);

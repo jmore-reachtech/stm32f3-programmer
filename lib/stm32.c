@@ -8,12 +8,17 @@
 
 #include "stm32.h"
 
+/* Uncomment for full debugging */
+//#define DEBUG
 #ifdef DEBUG
 #define LOG(format, ...) printf(format "\n" , ##__VA_ARGS__);
 #else
 #define LOG(format, ...)
 #endif
 
+/* 
+    STM32 sends an ACK on each successful command 
+*/
 stm32_err_t stm_get_ack(struct serial_port_options *opts)
 {
 	uint8_t byte;
@@ -33,6 +38,10 @@ stm32_err_t stm_get_ack(struct serial_port_options *opts)
 	return STM32_ERR_UNKNOWN;
 }
 
+/* 
+    Send the STM32 an init byte. This sets up the STM32 to accept 
+    commands 
+*/
 int stm_init_seq(struct serial_port_options *opts)
 {
 	uint8_t cmd = STM_INIT;
@@ -53,6 +62,9 @@ int stm_init_seq(struct serial_port_options *opts)
 	return 0;
 }
 
+/* 
+    Ask the STM32 what commands it supports 
+*/
 int stm_get_cmds(struct serial_port_options *opts)
 {
 	uint8_t cmd[2], buf[32];
@@ -90,7 +102,9 @@ int stm_get_cmds(struct serial_port_options *opts)
 	return 0;
 }
 
-
+/* 
+    This is a full erase of the STM32 
+*/
 int stm_erase_mem(struct serial_port_options *opts)
 {
 	uint8_t cmd[2];
@@ -130,6 +144,9 @@ int stm_erase_mem(struct serial_port_options *opts)
 	return 0;
 }
 
+/* 
+    Read a chunk of memory from the STM32 
+*/
 int stm_read_mem(struct serial_port_options *opts, uint32_t address, 
         uint8_t *data, unsigned int len )
 {
@@ -186,6 +203,9 @@ int stm_read_mem(struct serial_port_options *opts, uint32_t address,
 	return 0;
 }
 
+/* 
+    Write a chunk of memory to the STM32 
+*/
 int stm_write_mem(struct serial_port_options *opts, uint32_t address, 
         uint8_t data[], unsigned int len)
 {
@@ -252,6 +272,9 @@ int stm_write_mem(struct serial_port_options *opts, uint32_t address,
 	return 0;
 }
 
+/* 
+    Read the STM32 ID 
+*/
 int stm_get_id(struct serial_port_options *opts)
 {
 	uint8_t ver[32];
@@ -284,6 +307,10 @@ int stm_get_id(struct serial_port_options *opts)
 	return 0;
 }
 
+/* 
+    Jump to an address and start executing. The address is usually the 
+    base address of flash 
+*/
 int stm_go(struct serial_port_options *opts, uint32_t address)
 {
 	uint8_t cmd[2];
