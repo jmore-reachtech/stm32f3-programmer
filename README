@@ -5,5 +5,5 @@ lib: contains library code for serial, gpio and stm32
 src/prog: this is a command line tool to program an stm32.
 
 src/progd: this is socket application that can run as a daemon 
-    and accept commands to program an stm32. This is desigmed to 
+    and accept commands to program an stm32. This is designed to 
     be used by a Qml applicatopm
