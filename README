@@ -7,3 +7,12 @@ src/prog: this is a command line tool to program an stm32.
 src/progd: this is socket application that can run as a daemon 
     and accept commands to program an stm32. This is designed to 
     be used by a Qml applicatopm
+
+To compile:
+1. Copy this source tree to a directory in the Reach Linux VM
+2. Open a terminal and navigate to the directory that contains the
+    source code.
+3. Source the compiler environment file
+    $ source /opt/reach/1.6/environment-setup-cortexa9hf-vfp-neon-reach-linux-gnueabi
+4. Type make
+5. Copy src/progd/ispd to the /home/root directory on the display module
